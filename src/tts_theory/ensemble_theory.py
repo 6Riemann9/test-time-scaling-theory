@@ -886,16 +886,80 @@ def optimal_linear_ensemble_criterion(spec: GeneralGaussianMultiVerifierSpec) ->
     }
 
 
+def _compute_active_tail_constants(
+    mu_arr: np.ndarray,
+    cov_mat: np.ndarray,
+    qp_res: dict,
+) -> dict:
+    """在已解出的 Hashorva-Hüsler QP 结果上计算精确生存常数 C_sf 与密度常数 C_pdf = gamma * C_sf。"""
+    gamma = float(qp_res["gamma"])
+    act = qp_res["active_set"]
+    w = np.asarray(qp_res["multipliers"], dtype=np.float64)
+    strict = bool(qp_res["strict_complementarity"])
+    idx = np.asarray(act, dtype=np.int64)
+    sub_cov = cov_mat[np.ix_(idx, idx)]
+    sub_mu = mu_arr[idx]
+    w_act = w[idx]
+    beta = float(w_act @ sub_mu)
+
+    if strict and bool(np.all(w_act > 1e-12)):
+        sign, logdet = np.linalg.slogdet(sub_cov)
+        if sign <= 0:
+            raise ValueError("激活集子协方差矩阵必须是严格正定的。")
+        quad_mu = float(sub_mu @ np.linalg.solve(sub_cov, sub_mu))
+        log_c_sf = (
+            -0.5 * float(len(act)) * math.log(2.0 * math.pi)
+            - 0.5 * float(logdet)
+            - float(np.sum(np.log(w_act)))
+            - 0.5 * quad_mu
+        )
+        log_c_pdf = math.log(gamma) + log_c_sf
+        c_sf: float | None = float(math.exp(log_c_sf))
+        c_pdf: float | None = float(math.exp(log_c_pdf))
+        log_c_sf_out: float | None = float(log_c_sf)
+        log_c_pdf_out: float | None = float(log_c_pdf)
+    else:
+        c_sf = None
+        c_pdf = None
+        log_c_sf_out = None
+        log_c_pdf_out = None
+
+    return {
+        "gamma": gamma,
+        "beta": beta,
+        "active_set": list(act),
+        "active_cardinality": len(act),
+        "multipliers": w,
+        "strict_complementarity": strict,
+        "c_sf": c_sf,
+        "c_pdf": c_pdf,
+        "log_c_sf": log_c_sf_out,
+        "log_c_pdf": log_c_pdf_out,
+    }
+
+
+def general_min_tail_asymptotic_constants(mu: ArrayLike, cov: ArrayLike) -> dict:
+    """计算一般多维高斯最小值右尾精确渐近生存常数 C_sf 与密度常数 C_pdf = gamma * C_sf（定理 5A-II）。"""
+    mu_arr = np.asarray(mu, dtype=np.float64).ravel()
+    if mu_arr.size == 0 or not np.all(np.isfinite(mu_arr)):
+        raise ValueError("均值向量 mu 必须为有限非空一维向量")
+    cov_mat = _validate_spd_matrix(cov, "cov", expected_dim=mu_arr.size)
+    qp_res = solve_positive_quadrant_qp(cov_mat)
+    return _compute_active_tail_constants(mu_arr, cov_mat, qp_res)
+
+
 def general_min_ensemble_qp_criterion(spec: GeneralGaussianMultiVerifierSpec) -> dict:
     """一般非对称相关高斯 K-Verifier 上 Min-Ensemble 的 Hashorva-Hüsler QP 相变判据（定理 5A）。"""
     k = spec.num_verifiers
     qp1 = solve_positive_quadrant_qp(spec.cov1_arr)
     qp0 = solve_positive_quadrant_qp(spec.cov0_arr)
+    const1 = _compute_active_tail_constants(spec.mu1_arr, spec.cov1_arr, qp1)
+    const0 = _compute_active_tail_constants(spec.mu0_arr, spec.cov0_arr, qp0)
 
     g1 = float(qp1["gamma"])
     g0 = float(qp0["gamma"])
-    beta1 = float(qp1["multipliers"] @ spec.mu1_arr)
-    beta0 = float(qp0["multipliers"] @ spec.mu0_arr)
+    beta1 = float(const1["beta"])
+    beta0 = float(const0["beta"])
     act1_len = len(qp1["active_set"])
     act0_len = len(qp0["active_set"])
 
@@ -940,6 +1004,10 @@ def general_min_ensemble_qp_criterion(spec: GeneralGaussianMultiVerifierSpec) ->
         "active_set0": qp0["active_set"],
         "weights1": qp1["multipliers"],
         "weights0": qp0["multipliers"],
+        "c_sf1": const1["c_sf"],
+        "c_pdf1": const1["c_pdf"],
+        "c_sf0": const0["c_sf"],
+        "c_pdf0": const0["c_pdf"],
         "kappa_min_eff": float(kappa_min_eff),
         "kappa_mean": float(kappa_mean),
         "gamma0_cauchy_lb": float(gamma0_cauchy_lb),
@@ -1000,13 +1068,22 @@ class GaussianCopulaHeavyTailSpec:
 
 
 def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> dict:
-    """判定 Gaussian-Copula + Student-t 重尾模型下剩余尾相依系数与统一相界（定理 5B）。"""
+    """判定 Gaussian-Copula + Student-t 重尾模型下剩余尾相依系数与统一相界（定理 5B-II）。
+
+    对一般正定相关矩阵 R_c，gamma_c(R_c) in [1, inf) 故剩余尾相依系数 eta_c = 1 / gamma_c(R_c)
+    的精确取值范围为 (0, 1]（负相关可实现 eta_c < 1/K 的超独立加速衰减）；
+    当且仅当附加非负相关条件 (R_c)_{ij} >= 0 时，由 Slepian 引理限定 eta_c in [1/K, 1]。
+    """
     qp1 = solve_positive_quadrant_qp(spec.corr1_arr)
     qp0 = solve_positive_quadrant_qp(spec.corr0_arr)
 
     eta1 = 1.0 / float(qp1["gamma"])
     eta0_indep = 1.0 / float(qp0["gamma"])
     eta0_eff = 1.0 if spec.epsilon_shared > 0.0 else eta0_indep
+
+    is_nonneg_corr1 = bool(np.all(spec.corr1_arr >= -1e-12))
+    is_nonneg_corr0 = bool(np.all(spec.corr0_arr >= -1e-12))
+    eta0_below_independent_floor = bool(eta0_indep < 1.0 / float(spec.num_verifiers) - 1e-12)
 
     eff_alpha1 = float(spec.alpha1) / eta1
     eff_alpha0_min = float(spec.alpha0) / eta0_eff
@@ -1030,6 +1107,9 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
         "eta1": float(eta1),
         "eta0_copula": float(eta0_indep),
         "eta0_eff": float(eta0_eff),
+        "is_nonneg_corr1": is_nonneg_corr1,
+        "is_nonneg_corr0": is_nonneg_corr0,
+        "eta0_below_independent_floor": eta0_below_independent_floor,
         "effective_alpha1": float(eff_alpha1),
         "effective_alpha0_min": float(eff_alpha0_min),
         "mean_will_collapse": mean_will_collapse,
@@ -1277,6 +1357,7 @@ __all__ = [
     "ensemble_phase_reversal_criterion",
     "gaussian_copula_heavy_tail_criterion",
     "general_min_ensemble_qp_criterion",
+    "general_min_tail_asymptotic_constants",
     "heavy_tail_separation_criterion",
     "optimal_linear_ensemble_criterion",
     "simulate_multi_verifier_bon",

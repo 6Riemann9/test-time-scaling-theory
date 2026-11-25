@@ -21,7 +21,13 @@ from scipy import special
 from tts_theory.algorithms import EmpiricalScoreCalibrator
 from tts_theory.calibration_theory import exact_conditional_bin_bon_accuracy
 from tts_theory.integrals import exact_bon_curve, exact_calibrated_bon_accuracy
-from tts_theory.theorems import GaussianVerifierSpec, _LOG_SQRT_2PI, _logsumexp_components, _norm_logpdf
+from tts_theory.theorems import (
+    GaussianVerifierSpec,
+    _LOG_SQRT_2PI,
+    _logsumexp_components,
+    _norm_logpdf,
+    gaussian_peak_threshold,
+)
 
 
 @dataclass(frozen=True)
@@ -383,8 +389,79 @@ def evaluate_pooled_vs_within_prompt_calibration(
     }
 
 
+def diagnose_within_prompt_residual(spec: PromptHeterogeneitySpec) -> dict:
+    """诊断题内 Z-Score 标准化的先验诱导残差偏移与 N=2 纯秩天花板（定理 7B）。
+
+    明确区分两类情形：
+    - 恒定先验 p(X) == p_0：消去仿射偏移 (b(X), a(X)) 后残差为零，后验跨题完全对齐；
+    - 异质先验 p(X)：消去 (b(X), a(X)) 后仍保留由 p(X) 诱导的混合矩偏移与峰值 z_peak(X) 漂移。
+    同时给出 N=2 时三种纯秩规则（Raw-BoN, Anti-BoN, Random）的理论天花板对比 Oracle 校准。
+    """
+    w = spec.weights_arr
+    p_arr = spec.p_arr
+    a_arr = spec.scale_arr
+    b_arr = spec.shift_arr
+
+    dmu_base = float(spec.mu1_base - spec.mu0_base)
+    mu_tilde = float(spec.mu0_base) + p_arr * dmu_base
+    var_tilde = (
+        p_arr * (float(spec.sigma1_base) ** 2)
+        + (1.0 - p_arr) * (float(spec.sigma0_base) ** 2)
+        + p_arr * (1.0 - p_arr) * (dmu_base**2)
+    )
+    std_tilde = np.sqrt(var_tilde)
+
+    if spec.sigma0_base > spec.sigma1_base:
+        base_spec = GaussianVerifierSpec(
+            p=float(p_arr[0]),
+            mu1=float(spec.mu1_base),
+            sigma1=float(spec.sigma1_base),
+            mu0=float(spec.mu0_base),
+            sigma0=float(spec.sigma0_base),
+        )
+        x_peak_base: float | None = gaussian_peak_threshold(base_spec)
+        z_peak: np.ndarray | None = (x_peak_base - mu_tilde) / std_tilde
+        peak_z_span = float(np.max(z_peak) - np.min(z_peak))
+    else:
+        x_peak_base = None
+        z_peak = None
+        peak_z_span = 0.0
+
+    def _weighted_var(vals: np.ndarray) -> float:
+        mean_v = float(np.sum(w * vals))
+        return float(np.sum(w * (vals - mean_v) ** 2))
+
+    b_norm = b_arr / a_arr
+    affine_shift_var = _weighted_var(b_norm)
+    prior_induced_shift_var = _weighted_var(mu_tilde)
+    is_constant_prior = bool(np.ptp(p_arr) <= 1e-12)
+
+    mean_prior_p = float(np.sum(w * p_arr))
+    raw_bon_n2 = float(spec.exact_within_prompt_raw_bon([2])[0])
+    anti_bon_n2 = float(2.0 * mean_prior_p - raw_bon_n2)
+    rank_only_n2_ceiling = float(max(raw_bon_n2, anti_bon_n2, mean_prior_p))
+    oracle_cal_n2 = float(spec.exact_within_prompt_oracle_calibrated_bon([2])[0])
+
+    return {
+        "is_constant_prior": is_constant_prior,
+        "mu_tilde_by_stratum": mu_tilde,
+        "std_tilde_by_stratum": std_tilde,
+        "x_peak_base": x_peak_base,
+        "z_peak_by_stratum": z_peak,
+        "peak_z_span": peak_z_span,
+        "affine_shift_var": affine_shift_var,
+        "prior_induced_shift_var": prior_induced_shift_var,
+        "mean_prior_p": mean_prior_p,
+        "raw_bon_n2": raw_bon_n2,
+        "anti_bon_n2": anti_bon_n2,
+        "rank_only_n2_ceiling": rank_only_n2_ceiling,
+        "oracle_cal_n2": oracle_cal_n2,
+    }
+
+
 __all__ = [
     "PromptHeterogeneitySpec",
     "diagnose_simpson_confounding",
+    "diagnose_within_prompt_residual",
     "evaluate_pooled_vs_within_prompt_calibration",
 ]

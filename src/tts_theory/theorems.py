@@ -795,6 +795,85 @@ def binary_asymptotic_ceiling(spec: BinaryVerifierSpec) -> float:
     return spec.ppv
 
 
+def binary_bon_divergence_bounds(spec: BinaryVerifierSpec, n: int) -> dict:
+    """按 beta=0 (PPV=1) 与 beta>0 边界完备计算二元 Verifier 的 KL / chi^2 / TV 散度界（定理 3）。"""
+    if isinstance(n, (bool, np.bool_)) or int(n) != n or int(n) < 1:
+        raise ValueError(f"采样预算 n 必须为 >= 1 的整数，当前为 {n}。")
+    n_int = int(n)
+    q1 = spec.q1
+    ppv = spec.ppv
+    p_n = float(binary_bon_accuracy(spec, n_int))
+    tv_distance = float(abs(ppv - p_n))
+
+    # 退化或无分辨能力情况：P_N 恒等于 PPV == p
+    if (
+        math.isclose(q1, 0.0, abs_tol=1e-15)
+        or math.isclose(q1, 1.0, abs_tol=1e-15)
+        or math.isclose(spec.tpr, spec.fpr, rel_tol=0.0, abs_tol=1e-15)
+    ):
+        return {
+            "n": n_int,
+            "p_n": p_n,
+            "ppv": ppv,
+            "tv_distance": 0.0,
+            "kl_forward": 0.0,
+            "chi2_upper_bound": 0.0,
+            "kl_reverse": 0.0,
+            "is_ppv_one_boundary": False,
+        }
+
+    # 无假阳性边界：FPR=0 且 TPR>0 => PPV=1，前向散度发散但 TV 与反向 KL 精确有限
+    if math.isclose(ppv, 1.0, rel_tol=0.0, abs_tol=1e-15):
+        return {
+            "n": n_int,
+            "p_n": p_n,
+            "ppv": 1.0,
+            "tv_distance": tv_distance,
+            "kl_forward": math.inf,
+            "chi2_upper_bound": math.inf,
+            "kl_reverse": float(-math.log(max(p_n, 1e-300))),
+            "is_ppv_one_boundary": True,
+        }
+
+    # 无真阳性零界：TPR=0 且 FPR>0 => PPV=0
+    if math.isclose(ppv, 0.0, rel_tol=0.0, abs_tol=1e-15):
+        return {
+            "n": n_int,
+            "p_n": p_n,
+            "ppv": 0.0,
+            "tv_distance": tv_distance,
+            "kl_forward": math.inf,
+            "chi2_upper_bound": math.inf,
+            "kl_reverse": float(-math.log(max(1.0 - p_n, 1e-300))),
+            "is_ppv_one_boundary": False,
+        }
+
+    # 一般内点情况 0 < PPV < 1
+    t1 = p_n * math.log(p_n / ppv) if p_n > 0.0 else 0.0
+    t0 = (1.0 - p_n) * math.log((1.0 - p_n) / (1.0 - ppv)) if p_n < 1.0 else 0.0
+    kl_forward = float(max(0.0, t1 + t0))
+
+    coeff = spec.p * (1.0 - spec.p) * (spec.tpr - spec.fpr) / (q1 * (1.0 - q1))
+    chi2_upper = float(
+        (coeff * coeff) / (ppv * (1.0 - ppv)) * math.exp(2.0 * float(n_int) * math.log1p(-q1))
+    )
+
+    r1 = ppv * math.log(ppv / max(p_n, 1e-300))
+    r0 = (1.0 - ppv) * math.log((1.0 - ppv) / max(1.0 - p_n, 1e-300))
+    kl_reverse = float(max(0.0, r1 + r0))
+
+    return {
+        "n": n_int,
+        "p_n": p_n,
+        "ppv": ppv,
+        "tv_distance": tv_distance,
+        "kl_forward": kl_forward,
+        "chi2_upper_bound": chi2_upper,
+        "kl_reverse": kl_reverse,
+        "is_ppv_one_boundary": False,
+    }
+
+
 def binary_marginal_gain(
     spec: BinaryVerifierSpec,
     n: Union[int, ArrayLike],
@@ -962,27 +1041,51 @@ def weighted_majority_convergence_bound(
     mu_w_pos: float,
     mu_w_neg: float,
     w_max: float,
+    wrong_answer_probs: Sequence[float] | None = None,
+    wrong_mean_weights: Sequence[float] | None = None,
 ) -> dict:
-    """计算校准加权多数决（定理 4）的期望优势间隙与 Hoeffding/Bernstein 指数收敛常数。
+    """计算校准加权多数决（定理 4B）的期望优势间隙与 Hoeffding/Bernstein 指数收敛常数。
 
     参数:
         p: 单次采样命中正确答案 a* 的概率
-        p_wrong_max: 单个最强错误诱饵答案的生成概率 max_{j} P(A=a_j)
-        mu_w_pos: 正确样本条件权重期望 E[w(S) | Y=1]
-        mu_w_neg: 错误样本条件权重期望 E[w(S) | Y=0]
+        p_wrong_max: 当未提供异质错类列表时，单个最强错误诱饵答案的生成概率 max_j P(A=a_j)
+        mu_w_pos: 正确样本条件权重期望 E[w(S) | A=a*]
+        mu_w_neg: 当未提供异质错类列表时，错误样本条件权重期望 E[w(S) | Y=0]
         w_max: 有界权重上界 max w(S) > 0
+        wrong_answer_probs: 可选错误答案概率分布 [p_1, ..., p_J]（需与 wrong_mean_weights 成对提供）
+        wrong_mean_weights: 可选每个错误答案各自条件期望权重 [mu_{w,1}, ..., mu_{w,J}]
     """
     if not (0.0 < p < 1.0):
         raise ValueError(f"p 必须位于 (0, 1) 内，当前为 {p}。")
-    if not (0.0 <= p_wrong_max <= 1.0 - p + 1e-12):
-        raise ValueError(
-            f"p_wrong_max 必须位于 [0, 1-p] 内，当前 p={p}, p_wrong_max={p_wrong_max}。"
-        )
+    if (wrong_answer_probs is None) != (wrong_mean_weights is None):
+        raise ValueError("wrong_answer_probs 与 wrong_mean_weights 必须同时提供或同时省略。")
     if mu_w_pos < 0.0 or mu_w_neg < 0.0 or w_max <= 0.0:
         raise ValueError("条件权重期望必须非负且 w_max 必须严格大于 0。")
 
     expected_pos = float(p * mu_w_pos)
-    expected_wrong_max = float(p_wrong_max * mu_w_neg)
+    tail_bucket_prob_threshold = float(expected_pos / (2.0 * w_max))
+
+    if wrong_answer_probs is not None and wrong_mean_weights is not None:
+        pj = np.asarray(list(wrong_answer_probs), dtype=np.float64)
+        mwj = np.asarray(list(wrong_mean_weights), dtype=np.float64)
+        if pj.ndim != 1 or pj.size == 0 or pj.shape != mwj.shape:
+            raise ValueError("wrong_answer_probs 与 wrong_mean_weights 必须为非空等长一维序列。")
+        if np.any(pj < 0.0) or float(np.sum(pj)) > 1.0 - p + 1e-9:
+            raise ValueError("错误答案概率必须非负且总和不超过 1 - p。")
+        if np.any(mwj < 0.0) or np.any(mwj > w_max + 1e-12):
+            raise ValueError("各错误答案条件期望权重必须位于 [0, w_max] 内。")
+        wrong_scores = pj * mwj
+        max_idx = int(np.argmax(wrong_scores))
+        expected_wrong_max = float(wrong_scores[max_idx])
+        eff_p_wrong = float(pj[max_idx])
+    else:
+        if not (0.0 <= p_wrong_max <= 1.0 - p + 1e-12):
+            raise ValueError(
+                f"p_wrong_max 必须位于 [0, 1-p] 内，当前 p={p}, p_wrong_max={p_wrong_max}。"
+            )
+        expected_wrong_max = float(p_wrong_max * mu_w_neg)
+        eff_p_wrong = float(p_wrong_max)
+
     margin = float(expected_pos - expected_wrong_max)
     is_consistent = margin > 0.0
 
@@ -994,6 +1097,8 @@ def weighted_majority_convergence_bound(
             "bernstein_exponent": 0.0,
             "expected_pos_score": expected_pos,
             "expected_wrong_max_score": expected_wrong_max,
+            "effective_max_wrong_prob": eff_p_wrong,
+            "tail_bucket_prob_threshold": tail_bucket_prob_threshold,
             "convergence_rate": "non_convergent (margin <= 0)",
             "samples_for_error_1e_3": None,
         }
@@ -1001,10 +1106,10 @@ def weighted_majority_convergence_bound(
     # Z_{i,j} = W_i*(1{A_i=a*} - 1{A_i=a_j}) in [-w_max, w_max]，区间宽度 2*w_max
     hoeffding_exp = float((margin * margin) / (2.0 * w_max * w_max))
 
-    # Bernstein 方差上界：E[Z_{i,j}^2] <= (p + p_wrong_max) * w_max^2，
+    # Bernstein 方差上界：E[Z_{i,j}^2] <= (p + p_j) * w_max^2，
     # 且有中心化随机变量上界 |Z - E[Z]| <= w_max + margin <= 2*w_max
     var_upper = max(
-        1e-15, (p + p_wrong_max) * (w_max * w_max) - margin * margin
+        1e-15, (p + eff_p_wrong) * (w_max * w_max) - margin * margin
     )
     b_bound = w_max + margin
     bernstein_exp = float(
@@ -1019,6 +1124,8 @@ def weighted_majority_convergence_bound(
         "bernstein_exponent": bernstein_exp,
         "expected_pos_score": expected_pos,
         "expected_wrong_max_score": expected_wrong_max,
+        "effective_max_wrong_prob": eff_p_wrong,
+        "tail_bucket_prob_threshold": tail_bucket_prob_threshold,
         "convergence_rate": f"exponential O(exp(-{hoeffding_exp:.6g}*N))",
         "samples_for_error_1e_3": samples_1e3,
     }
@@ -1031,6 +1138,7 @@ __all__ = [
     "GaussianVerifierSpec",
     "binary_asymptotic_ceiling",
     "binary_bon_accuracy",
+    "binary_bon_divergence_bounds",
     "binary_marginal_gain",
     "binary_optimal_budget",
     "calibrated_bon_asymptotic_limit",

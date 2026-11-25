@@ -30,6 +30,7 @@ from tts_theory.ensemble_theory import (
     ensemble_phase_reversal_criterion,
     gaussian_copula_heavy_tail_criterion,
     general_min_ensemble_qp_criterion,
+    general_min_tail_asymptotic_constants,
     heavy_tail_separation_criterion,
     optimal_linear_ensemble_criterion,
     simulate_multi_verifier_bon,
@@ -38,6 +39,7 @@ from tts_theory.ensemble_theory import (
 from tts_theory.heterogeneity_theory import (
     PromptHeterogeneitySpec,
     diagnose_simpson_confounding,
+    diagnose_within_prompt_residual,
     evaluate_pooled_vs_within_prompt_calibration,
 )
 from tts_theory.integrals import (
@@ -69,6 +71,7 @@ from tts_theory.theorems import (
     GaussianVerifierSpec,
     binary_asymptotic_ceiling,
     binary_bon_accuracy,
+    binary_bon_divergence_bounds,
     binary_marginal_gain,
     binary_optimal_budget,
     calibrated_bon_asymptotic_limit,
@@ -88,6 +91,7 @@ __all__ = [
     "gaussian_peak_threshold",
     "closed_form_optimal_n",
     "binary_bon_accuracy",
+    "binary_bon_divergence_bounds",
     "binary_asymptotic_ceiling",
     "binary_marginal_gain",
     "binary_optimal_budget",
@@ -111,7 +115,7 @@ __all__ = [
     "CalibratedWeightedBoN",
     "TwoStageVerifiedMajority",
     "MajorityVoting",
-    # V2 & V4 多裁判相变逆转与重尾/Copula 统一理论（定理 5）
+    # V2 & V4/V5 多裁判相变逆转与重尾/Copula 统一理论（定理 5）
     "MultiVerifierGaussianSpec",
     "GeneralGaussianMultiVerifierSpec",
     "MinEnsembleVerifierSpec",
@@ -119,13 +123,14 @@ __all__ = [
     "GaussianCopulaHeavyTailSpec",
     "HeterogeneousVulnerabilitySpec",
     "solve_positive_quadrant_qp",
+    "general_min_tail_asymptotic_constants",
     "optimal_linear_ensemble_criterion",
     "general_min_ensemble_qp_criterion",
     "ensemble_phase_reversal_criterion",
     "heavy_tail_separation_criterion",
     "gaussian_copula_heavy_tail_criterion",
     "simulate_multi_verifier_bon",
-    # V2 & V4 有限校准集二次坍塌、KL-LCB 与联合标度（定理 6）
+    # V2 & V4/V5 有限校准集二次坍塌、KL-LCB 与联合标度（定理 6）
     "build_score_bins",
     "exact_conditional_bin_bon_accuracy",
     "compute_bin_calibrator_scores",
@@ -133,9 +138,10 @@ __all__ = [
     "calibration_minimax_scaling",
     "joint_calibration_compute_scaling",
     "simulate_finite_calibration_scaling",
-    # V4 题目异质性、辛普森悖论与题内标准化（定理 7）
+    # V4/V5 题目异质性、辛普森悖论与题内标准化（定理 7）
     "PromptHeterogeneitySpec",
     "diagnose_simpson_confounding",
+    "diagnose_within_prompt_residual",
     "evaluate_pooled_vs_within_prompt_calibration",
     # V3 真实大模型候选池与开源 RM 评估接口
     "extract_boxed_answer",
@@ -148,4 +154,4 @@ __all__ = [
     "evaluate_discrete_algorithms_on_real_pools",
 ]
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

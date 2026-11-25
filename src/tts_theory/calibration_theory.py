@@ -1,11 +1,12 @@
-"""有限校准样本 M 与推理预算 N 的二次坍塌定律及悲观 LCB 消除模块（定理 6）。
+"""有限校准样本 M 与推理预算 N 的二次坍塌定律及悲观 KL-LCB 悲观保底模块（定理 6）。
 
 本模块实现：
 1. 精确分桶统计构建（真实边际概率 pi_k 与真实桶内正确率 q_k）；
 2. 定理 6A：给定有限校准集估值向量（含任意平局组）时的闭式精确条件 Best-of-N
    正确率公式及无相消对数实现；
-3. 朴素 MLE、Laplace 平滑、Wilson-LCB 与 Empirical-Bernstein LCB 四类校准得分；
-4. Minimax 最优分桶标度律 K*(M) ~ (M / ln M)^{2/5} 与极值遗憾收敛评估；
+3. 朴素 MLE、Laplace 平滑、Wilson-LCB、KL-LCB 与 Empirical-Bernstein LCB 五类校准得分；
+4. Minimax 最优分桶标度律 K*(M) ~ (M / ln M)^{1 / (2*beta + 1)}（beta=2 时为 1/5）
+   及联合 (M, N) 信息论下界 Omega((ln M/M)^{beta/(2*beta+1)} + N^{-beta}) 评估；
 5. 有限校准集重复采样 + 精确条件推理评估引擎。
 """
 
@@ -418,6 +419,11 @@ def joint_calibration_compute_scaling(
     n_match = int(math.ceil(float(k_cal) * beta_f * max(1.0, math.log(float(max(2, k_cal))))))
     oracle_n_rate = float(float(n_int) ** (-beta_f))
     cal_m_rate = float(cal_info["regret_rate_theory"])
+    delta_opt = 1.0 / float(m_int)
+    minimax_lower_rate = float(cal_m_rate + oracle_n_rate)
+    kl_lcb_compute_rate = float(((beta_f * log_n) / float(n_int)) ** beta_f)
+    kl_lcb_upper_rate = float(cal_m_rate + kl_lcb_compute_rate)
+    compute_log_gap_factor = float((beta_f * log_n) ** beta_f)
     regime = "compute_limited" if k_comp < k_cal else "calibration_limited"
 
     return {
@@ -430,6 +436,12 @@ def joint_calibration_compute_scaling(
         "n_match": n_match,
         "oracle_n_rate": oracle_n_rate,
         "cal_m_rate": cal_m_rate,
+        "failure_prob_delta_opt": delta_opt,
+        "minimax_lower_rate": minimax_lower_rate,
+        "kl_lcb_compute_rate": kl_lcb_compute_rate,
+        "kl_lcb_upper_rate": kl_lcb_upper_rate,
+        "is_minimax_tight": bool(regime == "calibration_limited"),
+        "compute_log_gap_factor": compute_log_gap_factor,
         "regime": regime,
     }
 
