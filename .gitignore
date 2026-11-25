@@ -1,0 +1,8 @@
+data/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+RESUME_BULLETS.md
+.DS_Store
+Thumbs.db
