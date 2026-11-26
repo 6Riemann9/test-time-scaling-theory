@@ -401,11 +401,11 @@ def plot_fig3_heterogeneity_and_shift(v9: dict[str, Any], v10: dict[str, Any]) -
     ax.plot(n_grid, winz_split, color=C_GREEN, marker="D", linestyle=":", linewidth=1.5, markersize=3.6, label="Split Within-Z", zorder=3)
 
     ax.annotate(
-        "Peak $N=16$: 0.4640\n$\\to N=64$: 0.4579\n($p_t = 0.0208^*$)",
+        "Exploratory peak $N=16$: 0.4640\n$\\to N=64$: 0.4579 ($-0.60$ pp)\n$p_{\\mathrm{raw}}=0.0208$, Bonf.(14)$=0.291$",
         xy=(64, exact_curve[-1]),
-        xytext=(5.5, 0.402),
+        xytext=(4.2, 0.400),
         arrowprops=dict(arrowstyle="->", color=C_DARK, lw=1.0),
-        fontsize=7.1,
+        fontsize=6.6,
         fontweight="bold",
         color=C_DARK,
         bbox=dict(boxstyle="round,pad=0.25", fc="#F3F4F6", ec=C_GRAY, lw=0.7),
@@ -417,21 +417,23 @@ def plot_fig3_heterogeneity_and_shift(v9: dict[str, Any], v10: dict[str, Any]) -
     ax.set_xlabel("Sampling Budget $N$ (log$_2$ scale)")
     ax.set_ylabel("Pass@1 Accuracy")
     ax.set_ylim(0.36, 0.475)
-    ax.set_title("(b) Natural Collapse (college_math RM-B)")
-    ax.legend(loc="lower right", frameon=True, facecolor="white", framealpha=0.94, edgecolor="#D1D5DB", fontsize=6.9)
+    ax.set_title("(b) Exploratory Case (college_math RM-B)")
+    ax.legend(loc="lower right", frameon=True, facecolor="white", framealpha=0.94, edgecolor="#D1D5DB", fontsize=6.7)
 
-    # Panel (c): Four-Regime Shift Matrix (v10)
+    # Panel (c): Out-of-Support & In-Support Shift Matrix (v10 + 5th-round P1-06)
     ax = axes[2]
     _style_ax(ax)
     mat = v10["contamination_distribution_shift_matrix"]
-    reg_keys = [
-        ("clean_train_clean_val_clean_test", "R1: Clean\n(All)"),
-        ("contam_train_contam_val_contam_test", "R2: Matched\nContam"),
-        ("clean_train_clean_val_contam_test_unseen_shift", "R3: Unseen\nTest Shift"),
-        ("clean_train_contam_val_contam_test_target_val", "R4: Target\nVal Audit"),
+    in_mat = mat["in_support_high_score_shift_matrix"]
+    reg_entries = [
+        (mat["clean_train_clean_val_clean_test"], "R1\nClean"),
+        (mat["contam_train_contam_val_contam_test"], "R2\nMatched"),
+        (mat["clean_train_clean_val_contam_test_unseen_shift"], "R3: OOD\nUnseen"),
+        (mat["clean_train_contam_val_contam_test_target_val"], "R4: OOD\nTgt-Val"),
+        (in_mat["clean_train_clean_val_contam_test_unseen_shift"], "R5: In-Sup\nUnseen"),
     ]
-    xr = np.arange(len(reg_keys))
-    bw = 0.16
+    xr = np.arange(len(reg_entries))
+    bw = 0.155
     meths = [
         ("standard_bon_n64", "Raw-BoN", "#9CA3AF"),
         ("pooled_kl_lcb_n64", "Pooled-LCB", C_SKY),
@@ -441,15 +443,15 @@ def plot_fig3_heterogeneity_and_shift(v9: dict[str, Any], v10: dict[str, Any]) -
     ]
     offs = [-2.0 * bw, -1.0 * bw, 0.0, 1.0 * bw, 2.0 * bw]
     for off, (mkey, mlbl, col) in zip(offs, meths):
-        vals = [float(mat[rk][mkey]) for rk, _ in reg_keys]
+        vals = [float(entry[mkey]) for entry, _ in reg_entries]
         ax.bar(xr + off, vals, width=bw, color=col, label=mlbl, zorder=3)
 
     ax.set_xticks(xr)
-    ax.set_xticklabels([rlbl for _, rlbl in reg_keys], fontsize=7.6)
+    ax.set_xticklabels([rlbl for _, rlbl in reg_entries], fontsize=7.0)
     ax.set_ylim(0.18, 0.77)
     ax.set_ylabel("Holdout Pass@1 Accuracy ($N=64$)")
-    ax.set_title("(c) Four-Regime Shift Boundary")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=3, frameon=True, facecolor="white", framealpha=0.95, edgecolor="#D1D5DB", fontsize=6.8)
+    ax.set_title("(c) OOD vs. In-Support Shift Matrix")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=3, frameon=True, facecolor="white", framealpha=0.95, edgecolor="#D1D5DB", fontsize=6.7)
 
     fig.suptitle("Cross-Prompt Heterogeneity, Natural Overoptimization, and Distribution-Shift Boundaries", fontsize=11.0, fontweight="bold", y=0.96)
     _save_both(fig, "fig3_heterogeneity_and_shift")

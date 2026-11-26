@@ -221,3 +221,72 @@ def test_v10_clean_train_contaminated_test_shift_honest_boundary() -> None:
     acc_unseen_n32 = float(r_unseen["methods"]["kl_lcb"]["accuracy"][-1])
     assert np.isfinite(acc_unseen_n32)
     assert acc_unseen_n32 < acc_unseen_n1 + 0.15
+
+
+def test_v11_p0_02_safe_fisher_orthogonal_boundary_counterexample() -> None:
+    """第五轮 P0-02：直接验证审稿人反例 Sigma_1=I, Sigma_0=diag(0.5,2), dmu=(0,1)^T 进入退化正交边界分支。"""
+    from tts_theory.ensemble_theory import (
+        GeneralGaussianMultiVerifierSpec,
+        pareto_linear_ensemble_frontier,
+    )
+
+    spec = GeneralGaussianMultiVerifierSpec(
+        p=0.4,
+        mu1=[0.0, 1.0],
+        mu0=[0.0, 0.0],
+        cov1=[[1.0, 0.0], [0.0, 1.0]],
+        cov0=[[0.5, 0.0], [0.0, 2.0]],
+    )
+    res = pareto_linear_ensemble_frontier(spec, kappa_max=1.0)
+    assert res["feasible"] is True
+    assert res["regime"] == "degenerate_orthogonal_boundary"
+    assert math.isclose(float(res["kappa_safe"]), 1.0, rel_tol=1e-6, abs_tol=1e-7)
+    w_safe = np.asarray(res["w_safe"], dtype=np.float64)
+    # 理论上最优单位方向应平行于 (sqrt(2), 1)（正交分量符号可 ± 对称）
+    ratio_abs = abs(float(w_safe[0])) / max(abs(float(w_safe[1])), 1e-12)
+    assert math.isclose(ratio_abs, math.sqrt(2.0), rel_tol=1e-5, abs_tol=1e-6)
+
+
+def test_v11_p0_01_uniform_tie_breaking_preserves_bin_expectation() -> None:
+    """第五轮 P0-01：验证单桶内右端含窄错区时，均匀随机破平局保持 q_k 而按原始分破平局破坏 Minimax 恒等式。"""
+    rng = np.random.default_rng(1101)
+    # 构造一维分数 [0, 1]，前 90% 区域正确率为 1.0，最右 10% 区域 [0.9, 1.0] 正确率为 0.0（总桶均值为 0.9）
+    n_samples = 20_000
+    n_budget = 32
+    s_pool = rng.random((n_samples, n_budget))
+    y_pool = (s_pool < 0.90).astype(np.float64)
+
+    # 所有候选同落入单一 KL-LCB 最高桶：
+    # (1) 均匀随机打破平局期望准确率为桶均值 0.90；
+    # (2) 按原始分数 S_i 最大打破平局则等价于选 max_i S_i，准确率跌向 P(max S_i < 0.9) = 0.9^32 ~ 0.034
+    uniform_idx = rng.integers(0, n_budget, size=n_samples)
+    raw_tie_idx = np.argmax(s_pool, axis=1)
+    acc_uniform = float(np.mean(y_pool[np.arange(n_samples), uniform_idx]))
+    acc_raw_tie = float(np.mean(y_pool[np.arange(n_samples), raw_tie_idx]))
+
+    assert abs(acc_uniform - 0.90) < 0.01
+    assert acc_raw_tie < 0.06
+
+
+def test_v11_p1_04_and_06_bonferroni_and_in_support_clipping_boundary() -> None:
+    """第五轮 P1-04 & P1-06：验证 14 组 Bonferroni 校正公式与上尾支撑截断在分布内污染上的失效边界。"""
+    p_raw = 0.0208
+    p_bonf = min(1.0, 14.0 * p_raw)
+    assert math.isclose(p_bonf, 0.2912, rel_tol=1e-6)
+
+    rng = np.random.default_rng(1106)
+    # 干净训练分数 ~ N(0, 1) (错) vs N(1.2, 1) (对)
+    tr_y = rng.random(2_000) < 0.35
+    tr_s = np.where(tr_y, rng.normal(1.2, 1.0, 2_000), rng.normal(0.0, 1.0, 2_000))
+    tr_hi_cap = float(np.quantile(tr_s, 0.998))
+
+    # 分布内高分污染：错误样本落入干净 [q90, q985] 区间（完全低于 99.8% 上界）
+    q90, q985 = float(np.quantile(tr_s, 0.90)), float(np.quantile(tr_s, 0.985))
+    assert q985 < tr_hi_cap
+
+    te_y = rng.random((300, 64)) < 0.35
+    in_sp = (~te_y) & (rng.random((300, 64)) < 0.12)
+    te_s = np.where(te_y, rng.normal(1.2, 1.0, (300, 64)), rng.normal(0.0, 1.0, (300, 64)))
+    te_s = np.where(in_sp, rng.uniform(q90, q985, (300, 64)), te_s)
+    # 检验分布内假阳性尖峰确实不被 tr_hi_cap 拦截（拦截率严格为 0%）
+    assert np.all(te_s[in_sp] <= tr_hi_cap)

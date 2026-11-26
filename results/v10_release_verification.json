@@ -362,6 +362,8 @@
       "within_prompt_z_n64": 0.6690166975881262,
       "hybrid_fixed_n64": 0.7083487940630798,
       "support_clipped_kl_lcb_n64": 0.708988426539447,
+      "alg1_sample_split_kl_lcb_n64": 0.7086742680986409,
+      "alg1_sample_split_support_clipped_n64": 0.7085505822606692,
       "hybrid_minus_std_n64": 0.0,
       "p_value_ttest_vs_std": 1.0
     },
@@ -375,6 +377,8 @@
       "within_prompt_z_n64": 0.7093382807668522,
       "hybrid_fixed_n64": 0.7093382807668522,
       "support_clipped_kl_lcb_n64": 0.712430426716141,
+      "alg1_sample_split_kl_lcb_n64": 0.70917606554625,
+      "alg1_sample_split_support_clipped_n64": 0.70917606554625,
       "hybrid_minus_std_n64": 0.4228818800247371,
       "p_value_ttest_vs_std": 2.2250738585072014e-308
     },
@@ -388,6 +392,8 @@
       "within_prompt_z_n64": 0.7024118738404452,
       "hybrid_fixed_n64": 0.28645640074211504,
       "support_clipped_kl_lcb_n64": 0.7108437141090203,
+      "alg1_sample_split_kl_lcb_n64": 0.34996265105397756,
+      "alg1_sample_split_support_clipped_n64": 0.7100976066648365,
       "hybrid_minus_std_n64": 0.0,
       "p_value_ttest_vs_std": 1.0
     },
@@ -401,31 +407,164 @@
       "within_prompt_z_n64": 0.7024118738404452,
       "hybrid_fixed_n64": 0.7024118738404452,
       "support_clipped_kl_lcb_n64": 0.7108437141090203,
+      "alg1_sample_split_kl_lcb_n64": 0.34996265105397756,
+      "alg1_sample_split_support_clipped_n64": 0.7100976066648365,
       "hybrid_minus_std_n64": 0.41595547309833025,
       "p_value_ttest_vs_std": 5.651800295724992e-305
+    },
+    "in_support_high_score_shift_matrix": {
+      "clean_train_clean_val_clean_test": {
+        "n_train": 4494,
+        "n_val": 1798,
+        "n_test": 2695,
+        "selected_branch_n64": "Standard-BoN",
+        "standard_bon_n64": 0.7083487940630798,
+        "pooled_kl_lcb_n64": 0.708988426539447,
+        "within_prompt_z_n64": 0.6690166975881262,
+        "hybrid_fixed_n64": 0.7083487940630798,
+        "support_clipped_kl_lcb_n64": 0.708988426539447,
+        "alg1_sample_split_kl_lcb_n64": 0.7086742680986409,
+        "alg1_sample_split_support_clipped_n64": 0.7085505822606692,
+        "hybrid_minus_std_n64": 0.0,
+        "p_value_ttest_vs_std": 1.0
+      },
+      "contam_train_contam_val_contam_test": {
+        "n_train": 4494,
+        "n_val": 1798,
+        "n_test": 2695,
+        "selected_branch_n64": "Within-Prompt-Z-KL-LCB",
+        "standard_bon_n64": 0.362708719851577,
+        "pooled_kl_lcb_n64": 0.6598639455782314,
+        "within_prompt_z_n64": 0.6868274582560296,
+        "hybrid_fixed_n64": 0.6868274582560296,
+        "support_clipped_kl_lcb_n64": 0.6598639455782314,
+        "alg1_sample_split_kl_lcb_n64": 0.6821260777492362,
+        "alg1_sample_split_support_clipped_n64": 0.6821260777492362,
+        "hybrid_minus_std_n64": 0.3241187384044527,
+        "p_value_ttest_vs_std": 5.428691750456285e-215
+      },
+      "clean_train_clean_val_contam_test_unseen_shift": {
+        "n_train": 4494,
+        "n_val": 1798,
+        "n_test": 2695,
+        "selected_branch_n64": "Standard-BoN",
+        "standard_bon_n64": 0.362708719851577,
+        "pooled_kl_lcb_n64": 0.36286725517965285,
+        "within_prompt_z_n64": 0.6906617192331479,
+        "hybrid_fixed_n64": 0.362708719851577,
+        "support_clipped_kl_lcb_n64": 0.36286637170938163,
+        "alg1_sample_split_kl_lcb_n64": 0.3786648928336107,
+        "alg1_sample_split_support_clipped_n64": 0.3785342046942191,
+        "hybrid_minus_std_n64": 0.0,
+        "p_value_ttest_vs_std": 1.0
+      },
+      "clean_train_contam_val_contam_test_target_val": {
+        "n_train": 4494,
+        "n_val": 1798,
+        "n_test": 2695,
+        "selected_branch_n64": "Within-Prompt-Z-KL-LCB",
+        "standard_bon_n64": 0.362708719851577,
+        "pooled_kl_lcb_n64": 0.36286725517965285,
+        "within_prompt_z_n64": 0.6906617192331479,
+        "hybrid_fixed_n64": 0.6906617192331479,
+        "support_clipped_kl_lcb_n64": 0.36286637170938163,
+        "alg1_sample_split_kl_lcb_n64": 0.3786648928336107,
+        "alg1_sample_split_support_clipped_n64": 0.3785342046942191,
+        "hybrid_minus_std_n64": 0.3279529993815708,
+        "p_value_ttest_vs_std": 1.7562859353955786e-218
+      }
     }
   },
   "natural_nonmonotone_collapse_audit": {
-    "acemath_natural_overoptimization_instances": [
+    "n_family_tests": 14,
+    "all_14_subset_audits": [
+      {
+        "dataset": "AceMath/college_math/RM_A",
+        "n_problems": 2818,
+        "n_peak": 64,
+        "acc_peak": 0.4706056304707831,
+        "n_max": 64,
+        "acc_n_max": 0.4706056304707831,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.37423482966643007,
+          0.43449881431162574,
+          0.4597220063687802,
+          0.46777265046613703,
+          0.4696447947676134,
+          0.47005573147001406,
+          0.4706056304707831
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
       {
         "dataset": "AceMath/college_math/RM_B",
         "n_problems": 2818,
         "n_peak": 16,
-        "acc_peak": 0.4639981292233776,
+        "acc_peak": 0.46399812922337763,
         "n_max": 64,
         "acc_n_max": 0.45794889992902765,
-        "drop_peak_to_max": 0.006049229294349923,
+        "drop_peak_to_max": 0.006049229294349978,
         "se_drop": 0.002614883559688657,
-        "p_value_ttest_two_sided": 0.020773218333622716,
+        "p_value_ttest_two_sided": 0.020773218333622737,
         "exact_curve": [
           0.37423482966643007,
           0.4320458510764148,
           0.4563749619679437,
           0.4636152619009188,
-          0.4639981292233776,
+          0.46399812922337763,
           0.46161589587221175,
           0.45794889992902765
-        ]
+        ],
+        "p_value_bonferroni_14": 0.29082505667071834,
+        "p_value_holm_14": 0.29082505667071834
+      },
+      {
+        "dataset": "AceMath/gaokao2023en/RM_A",
+        "n_problems": 385,
+        "n_peak": 64,
+        "acc_peak": 0.7727272727272727,
+        "n_max": 64,
+        "acc_n_max": 0.7727272727272727,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.5250405844155844,
+          0.6412962533498282,
+          0.7109831983047202,
+          0.7461559114277638,
+          0.7619622636197935,
+          0.7696251907957856,
+          0.7727272727272727
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/gaokao2023en/RM_B",
+        "n_problems": 385,
+        "n_peak": 64,
+        "acc_peak": 0.7831168831168831,
+        "n_max": 64,
+        "acc_n_max": 0.7831168831168831,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.5250405844155844,
+          0.6369891517212978,
+          0.7030955287504137,
+          0.7383506899776958,
+          0.7584246969530759,
+          0.7728504001662745,
+          0.7831168831168831
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
       },
       {
         "dataset": "AceMath/gsm8k/RM_A",
@@ -436,7 +575,7 @@
         "acc_n_max": 0.9719484457922669,
         "drop_peak_to_max": 0.0016159033194746986,
         "se_drop": 0.0019165614623658021,
-        "p_value_ttest_two_sided": 0.39931080854606804,
+        "p_value_ttest_two_sided": 0.3993108085460679,
         "exact_curve": [
           0.8674540371493555,
           0.94250619757633,
@@ -445,7 +584,9 @@
           0.9735643491117416,
           0.9730691987297062,
           0.9719484457922669
-        ]
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
       },
       {
         "dataset": "AceMath/gsm8k/RM_B",
@@ -456,7 +597,7 @@
         "acc_n_max": 0.9666413949962093,
         "drop_peak_to_max": 0.000530456031862081,
         "se_drop": 0.0019583765614509512,
-        "p_value_ttest_two_sided": 0.7865371340573741,
+        "p_value_ttest_two_sided": 0.7865371340573739,
         "exact_curve": [
           0.8674540371493555,
           0.9401525852317207,
@@ -465,7 +606,31 @@
           0.9671718510280713,
           0.9666542564991906,
           0.9666413949962093
-        ]
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/math500/RM_A",
+        "n_problems": 500,
+        "n_peak": 64,
+        "acc_peak": 0.882,
+        "n_max": 64,
+        "acc_n_max": 0.882,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.624375,
+          0.7615664682539689,
+          0.8364411545289698,
+          0.8669088729715683,
+          0.8776212960720905,
+          0.8802449917953505,
+          0.882
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
       },
       {
         "dataset": "AceMath/math500/RM_B",
@@ -476,7 +641,7 @@
         "acc_n_max": 0.86,
         "drop_peak_to_max": 0.0013353268579077149,
         "se_drop": 0.005688385943457273,
-        "p_value_ttest_two_sided": 0.8145020372599683,
+        "p_value_ttest_two_sided": 0.8145020372599685,
         "exact_curve": [
           0.624375,
           0.7575992063492065,
@@ -485,7 +650,31 @@
           0.8613353268579077,
           0.8608023821344871,
           0.86
-        ]
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/minerva_math/RM_A",
+        "n_problems": 272,
+        "n_peak": 64,
+        "acc_peak": 0.47058823529411764,
+        "n_max": 64,
+        "acc_n_max": 0.47058823529411764,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.29279641544117646,
+          0.3741903011204505,
+          0.42524319434939395,
+          0.4510589978272681,
+          0.4635087833188295,
+          0.4668282701579077,
+          0.47058823529411764
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
       },
       {
         "dataset": "AceMath/minerva_math/RM_B",
@@ -496,7 +685,7 @@
         "acc_n_max": 0.4227941176470588,
         "drop_peak_to_max": 0.0011830460483489014,
         "se_drop": 0.010226261429430271,
-        "p_value_ttest_two_sided": 0.9079862437025267,
+        "p_value_ttest_two_sided": 0.9079862437025266,
         "exact_curve": [
           0.29279641544117646,
           0.36389399509804166,
@@ -505,7 +694,53 @@
           0.4239771636954077,
           0.4227424763846524,
           0.4227941176470588
-        ]
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/mmlu_stem/RM_A",
+        "n_problems": 3018,
+        "n_peak": 64,
+        "acc_peak": 0.9092113982770046,
+        "n_max": 64,
+        "acc_n_max": 0.9092113982770046,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.5367896785950961,
+          0.7029942533949769,
+          0.8149931802807611,
+          0.8708961435658789,
+          0.8933929063672228,
+          0.9028216101276507,
+          0.9092113982770046
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/mmlu_stem/RM_B",
+        "n_problems": 3018,
+        "n_peak": 64,
+        "acc_peak": 0.8281974817760106,
+        "n_max": 64,
+        "acc_n_max": 0.8281974817760106,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.5367896785950961,
+          0.6697532233845622,
+          0.7627144434650619,
+          0.8079751374633559,
+          0.8226989934627785,
+          0.8262144219478689,
+          0.8281974817760106
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
       },
       {
         "dataset": "AceMath/olympiadbench/RM_A",
@@ -525,9 +760,178 @@
           0.5199989959276627,
           0.5345878904833667,
           0.534074074074074
-        ]
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/olympiadbench/RM_B",
+        "n_problems": 675,
+        "n_peak": 64,
+        "acc_peak": 0.4955555555555556,
+        "n_max": 64,
+        "acc_n_max": 0.4955555555555556,
+        "drop_peak_to_max": 0.0,
+        "se_drop": 0.0,
+        "p_value_ttest_two_sided": 1.0,
+        "exact_curve": [
+          0.27796296296296297,
+          0.3700918577307491,
+          0.4345044528508573,
+          0.468128191379639,
+          0.48443318333954805,
+          0.4920761525911405,
+          0.4955555555555556
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
       }
     ],
+    "acemath_natural_overoptimization_instances": [
+      {
+        "dataset": "AceMath/college_math/RM_B",
+        "n_problems": 2818,
+        "n_peak": 16,
+        "acc_peak": 0.46399812922337763,
+        "n_max": 64,
+        "acc_n_max": 0.45794889992902765,
+        "drop_peak_to_max": 0.006049229294349978,
+        "se_drop": 0.002614883559688657,
+        "p_value_ttest_two_sided": 0.020773218333622737,
+        "exact_curve": [
+          0.37423482966643007,
+          0.4320458510764148,
+          0.4563749619679437,
+          0.4636152619009188,
+          0.46399812922337763,
+          0.46161589587221175,
+          0.45794889992902765
+        ],
+        "p_value_bonferroni_14": 0.29082505667071834,
+        "p_value_holm_14": 0.29082505667071834
+      },
+      {
+        "dataset": "AceMath/gsm8k/RM_A",
+        "n_problems": 1319,
+        "n_peak": 16,
+        "acc_peak": 0.9735643491117416,
+        "n_max": 64,
+        "acc_n_max": 0.9719484457922669,
+        "drop_peak_to_max": 0.0016159033194746986,
+        "se_drop": 0.0019165614623658021,
+        "p_value_ttest_two_sided": 0.3993108085460679,
+        "exact_curve": [
+          0.8674540371493555,
+          0.94250619757633,
+          0.9658222732824693,
+          0.9722830499878738,
+          0.9735643491117416,
+          0.9730691987297062,
+          0.9719484457922669
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/gsm8k/RM_B",
+        "n_problems": 1319,
+        "n_peak": 16,
+        "acc_peak": 0.9671718510280713,
+        "n_max": 64,
+        "acc_n_max": 0.9666413949962093,
+        "drop_peak_to_max": 0.000530456031862081,
+        "se_drop": 0.0019583765614509512,
+        "p_value_ttest_two_sided": 0.7865371340573739,
+        "exact_curve": [
+          0.8674540371493555,
+          0.9401525852317207,
+          0.9615249381354438,
+          0.9666259896888113,
+          0.9671718510280713,
+          0.9666542564991906,
+          0.9666413949962093
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/math500/RM_B",
+        "n_problems": 500,
+        "n_peak": 16,
+        "acc_peak": 0.8613353268579077,
+        "n_max": 64,
+        "acc_n_max": 0.86,
+        "drop_peak_to_max": 0.0013353268579077149,
+        "se_drop": 0.005688385943457273,
+        "p_value_ttest_two_sided": 0.8145020372599685,
+        "exact_curve": [
+          0.624375,
+          0.7575992063492065,
+          0.8286213541273177,
+          0.8548358363506359,
+          0.8613353268579077,
+          0.8608023821344871,
+          0.86
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/minerva_math/RM_B",
+        "n_problems": 272,
+        "n_peak": 16,
+        "acc_peak": 0.4239771636954077,
+        "n_max": 64,
+        "acc_n_max": 0.4227941176470588,
+        "drop_peak_to_max": 0.0011830460483489014,
+        "se_drop": 0.010226261429430271,
+        "p_value_ttest_two_sided": 0.9079862437025266,
+        "exact_curve": [
+          0.29279641544117646,
+          0.36389399509804166,
+          0.40342129147953054,
+          0.4197826280073189,
+          0.4239771636954077,
+          0.4227424763846524,
+          0.4227941176470588
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      },
+      {
+        "dataset": "AceMath/olympiadbench/RM_A",
+        "n_problems": 675,
+        "n_peak": 32,
+        "acc_peak": 0.5345878904833667,
+        "n_max": 64,
+        "acc_n_max": 0.534074074074074,
+        "drop_peak_to_max": 0.0005138164092927111,
+        "se_drop": 0.004884943725450587,
+        "p_value_ttest_two_sided": 0.9162613461253261,
+        "exact_curve": [
+          0.27796296296296297,
+          0.37562940917107945,
+          0.4487702576656447,
+          0.4932715824867936,
+          0.5199989959276627,
+          0.5345878904833667,
+          0.534074074074074
+        ],
+        "p_value_bonferroni_14": 1.0,
+        "p_value_holm_14": 1.0
+      }
+    ],
+    "split_sample_confirmatory_college_math_rm_b": {
+      "n_sel": 1409,
+      "n_conf": 1409,
+      "n_peak_sel": 16,
+      "acc_peak_sel": 0.4533446704928316,
+      "acc_peak_conf": 0.4746515879539232,
+      "acc_n64_conf": 0.4638041163946061,
+      "drop_conf": 0.010847471559316011,
+      "se_conf": 0.003842245502247704,
+      "p_value_conf_two_sided": 0.00482143689181676
+    },
     "college_math_rm_b_single_split": {
       "n_total_problems": 2818,
       "n_train_problems": 1409,

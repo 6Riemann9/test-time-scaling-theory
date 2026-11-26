@@ -33,11 +33,12 @@ test-time-scaling-theory/
 ├── RELATED_WORK.md                            # 27 篇 TTS 及被动/主动非参数极值估计、离线悲观、极值与统计检验文献审计
 ├── README.md                                  # 项目总览与复现指南
 ├── paper/
-│   ├── main.tex                               # 正式英文 LaTeX 论文（NeurIPS 2025 样式、§1–§8、Algorithm 1–2 + 附录 A–F）
+│   ├── main.tex                               # 正式英文 LaTeX 论文（NeurIPS 2026 样式、§1–§8、Algorithm 1–2 + 附录 A–E + 16 项 Checklist）
+│   ├── main.pdf                               # 本地 Tectonic 0.17.0 编译产物（正文及全部图表严格 <= 9 页，总计 21 页）
 │   ├── references.bib                         # 逐篇外部核验的 27 篇 BibTeX 参考文献库
-│   ├── neurips_2025.sty                       # NeurIPS 2025 标准排版样式（支持 [preprint] 与双盲匿名模式）
+│   ├── neurips_2026.sty                       # NeurIPS 2026 官方排版样式（支持 [preprint] 与双盲匿名模式）
 │   ├── Makefile                               # 论文一键编译脚本
-│   ├── REVIEW_AUDIT.md                        # 多工具联合质量审计与修正对照备忘录
+│   ├── REVIEW_AUDIT.md                        # 多工具联合质量审计与修正对照备忘录（含第五轮 9/9 整改台账）
 │   └── figures/                               # 论文主图（fig1–fig4 矢量 .pdf 与 300 DPI .png）
 ├── src/tts_theory/
 │   ├── __init__.py                            # 统一公开 API 导出 (v1.0.0)
@@ -50,12 +51,12 @@ test-time-scaling-theory/
 │   ├── simulator.py                           # 流式分块向量化蒙特卡洛仿真器
 │   └── algorithms.py                          # StandardBoN, OptimalNStarBoN, EmpiricalScoreCalibrator,
 │                                              # CalibratedWeightedBoN, TwoStageVerifiedMajority
-├── tests/                                     # 全套 12 个离线测试模块（共 73 项测试）
+├── tests/                                     # 全套 12 个离线测试模块（共 76 项测试）
 │   ├── test_theorems.py / test_algorithms.py / test_extensions.py
 │   ├── test_real_eval.py / test_stage2_real_eval.py
 │   ├── test_v4_theory.py / test_v5_rigor.py / test_v6_theory.py
 │   ├── test_v7_counterexamples.py / test_v8_rigor.py / test_v9_consolidation.py
-│   └── test_v10_release.py                    # 四审收官：q_2(3.5) 端点、sqrt(c_1) 常数、零方差平局、协议防呆与同 K 消融（6 项）
+│   └── test_v10_release.py                    # 四/五审收官：正交边界、均匀破平局、Bonferroni、分布内漂移与同 K 消融（9 项）
 ├── scripts/
 │   ├── verify_theorems.py / run_experiments.py / plot_figures.py
 │   ├── run_v2_extensions.py / plot_v2_figures.py
@@ -88,7 +89,7 @@ git clone https://github.com/6Riemann9/test-time-scaling-theory.git
 cd test-time-scaling-theory
 python -m pip install --no-deps --no-build-isolation -e .
 
-# 2. 运行全量单元测试（共 73 项离线测试）
+# 2. 运行全量单元测试（共 76 项离线测试）
 python -m pytest -v
 
 # 3. 运行理论校验与 V9/V10 协议对齐、公平消融及分布漂移验证脚本
@@ -121,6 +122,7 @@ python scripts/audit_paper_artifacts.py
 - **定理 7 & 命题 7.1（独立单次划分主检验、仿射不变性与同预算污染压力测试）**：
   - **互不相交单次划分 `50% Train / 20% Val / 30% Held-Out Test` + 零重拟合 `Hybrid-Fixed` + 双侧配对 $t$ 检验**：在跨领域混池 `S3 3-Domain`（$P_{\text{test}}=839, N=128$）与 `S1a RB2 Skywork`（$P_{\text{test}}=556, N=4$）上，`Hybrid-Fixed` 分别达到 **`51.59% ± 1.71%`** 与 **`85.92% ± 1.43%`**，统计显著优于受辛普森混杂拖累的 `Pooled-KL-LCB`（**`+2.41 pp`, $p_t = 0.0050$**；**`+1.83 pp`, $p_t = 0.0120$**）；在低偏移域 `AceMath RM-A/B`（$P_{\text{test}}=2{,}695$）与 `OlympiadBench`（$P_{\text{test}}=202$）上完全规避 `Within-Prompt-Z` 的统计显著下跌（`-2.91 pp / -3.17 pp / -9.16 pp`），与 `Pooled-KL-LCB` 无统计显著差异（$p_t \in [0.14, 0.68]$），经验重拟合漂移 $\hat{\varepsilon}_{\text{refit}} \in [0.0006, 0.0074]$。
   - **同等预算下的受控 Reward Hacking 压力测试**：在完全相同的 `AceMath RM-B` 50/20/30 划分与 $N=64$ 预算下，向错误轨迹注入 `6%` 右尾高分假阳性后，`Standard-BoN` 从 `63.06%`（$N=4$）坍塌至 **`28.65% ± 0.89%`**（$N=64$），而 `Hybrid-Fixed-KL-LCB` 自动切换至校准分支并保持 **`70.89% ± 0.86%`**（领先 `Standard-BoN` **`+42.24 pp`**, 95% CI `[+40.23, +44.11] pp`, $p_t < 10^{-300}$），清晰验证跨相区风险控制定位。
+  - **OOD vs 分布内漂移失效边界、离散 `Algorithm 1` 对齐与多重比较审计**：在 `AceMath RM-B` 未知漂移矩阵中，越界截断 `Support-Clipped` 可拦截 OOD 尖峰（`71.08%`，严格离散 `Algorithm 1` 为 `71.01%`），但在未越 `99.8%` 分位帽的分布内 `[q_0.90, q_0.985]` 高分污染下退化为 `36.29%` / `37.85%`（与 `Raw-BoN` `36.27%` 同构），唯有经目标验证集触发 `Within-Prompt-Z` 仍可挽回至 `69.07%`（`+32.80 pp`）。对公开 14 组子集的多重检验表明 `college_math RM-B` 仅属探索性候选（14 组 Bonferroni/Holm `p=0.2908`，留出切分 `p_t=0.1810`）。
   - **原始坐标仿射不变性与无网格解析遮蔽**：在极端题间仿射变换 $b=(-250, 1000), a=(0.25, 6.0)$ 下，定理 7C(4) 后验恒等式偏差 `3.28e-15`，在线样本 $Z_{i,N}$ 选择准确率差 `2.78e-16`；定理 7A(2) 在闭区间 `[3.5, 4.2]` 上纯解析下界给出 $q'_{\text{pool}}(s) \ge +7.044\times 10^{-3} > +7.03\times 10^{-3} > 0$。
 - **定理 5（异构多裁判相关性破局与退化 QP/Copula 边界）**：
   - 真实 `RB2 hetero6`（$P=1{,}723, N=4$）上 `Fisher=88.28%`, `QDA=87.93%`, `Safe-Fisher=81.66%`, `GenEig=39.29%`（印证 `Safe-Fisher` 针对 $N=2$ 目标权衡）；3×3 零乘子弱激活矩阵（$|I_+|=2, I_0=\{3\}$）于 $t=500$ 处与修正阶 $\frac{1}{4\pi}t^{-2}e^{-t^2}$ 数值积分比达 **`1.0022`**。

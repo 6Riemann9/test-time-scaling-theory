@@ -261,100 +261,161 @@ def run_contamination_distribution_shift_matrix(all_probs_ace: list[dict[str, An
     val_idx = np.asarray(sorted(val_idx_l), dtype=np.int64)
     test_idx = np.asarray(sorted(test_idx_l), dtype=np.int64)
 
-    def _eval_custom_split(
-        tr_src: list[tuple[str, np.ndarray, np.ndarray]],
-        va_src: list[tuple[str, np.ndarray, np.ndarray]],
-        te_src: list[tuple[str, np.ndarray, np.ndarray]],
-        n_bins: int = 20,
-        n_eval: int = 64,
-    ) -> dict[str, Any]:
-        def _z_pool(s_vec: np.ndarray) -> np.ndarray:
-            sd = float(np.std(s_vec, ddof=1)) if s_vec.size > 1 else 0.0
-            return (s_vec - float(np.mean(s_vec))) / sd if sd > 1e-12 else np.zeros_like(s_vec)
+    def _inject_in_support_high_contamination(
+        probs: list[dict[str, Any]],
+        q90: float,
+        q985: float,
+        spike_rate: float = 0.06,
+        seed: int = 202610,
+    ) -> list[tuple[str, np.ndarray, np.ndarray]]:
+        """非极端高分（分布内 In-Support）污染：仅落于干净正常高分带 [q90, q985]，不超出 99.8% 截断边界。"""
+        rng_in = np.random.default_rng(seed)
+        out_in: list[tuple[str, np.ndarray, np.ndarray]] = []
+        for p_item in probs:
+            s_arr = p_item["rm_b"].copy()
+            y_arr = p_item["is_correct"].copy()
+            w_mask = ~y_arr
+            if np.any(w_mask):
+                sp_mask = (rng_in.random(s_arr.size) < spike_rate) & w_mask
+                n_sp = int(np.sum(sp_mask))
+                if n_sp > 0:
+                    s_arr[sp_mask] = rng_in.uniform(q90, q985, size=n_sp)
+            out_in.append((p_item["subset"], s_arr, y_arr))
+        return out_in
 
-        tr_s = np.concatenate([tr_src[i][1] for i in train_idx])
-        tr_y = np.concatenate([tr_src[i][2].astype(np.int64) for i in train_idx])
-        tr_z = np.concatenate([_z_pool(tr_src[i][1]) for i in train_idx])
+    def _eval_split_matrix(c_pools_list: list[tuple[str, np.ndarray, np.ndarray]], tag_seed: int = 0) -> dict[str, Any]:
+        """对给定干净/污染池矩阵同时评估 EmpiricalScoreCalibrator 与严格 Algorithm 1 Sample-Split 版本。"""
+        def _run_one(
+            tr_src: list[tuple[str, np.ndarray, np.ndarray]],
+            va_src: list[tuple[str, np.ndarray, np.ndarray]],
+            te_src: list[tuple[str, np.ndarray, np.ndarray]],
+            n_bins: int = 20,
+        ) -> dict[str, Any]:
+            def _z_pool(s_vec: np.ndarray) -> np.ndarray:
+                sd = float(np.std(s_vec, ddof=1)) if s_vec.size > 1 else 0.0
+                return (s_vec - float(np.mean(s_vec))) / sd if sd > 1e-12 else np.zeros_like(s_vec)
 
-        cal_pool = EmpiricalScoreCalibrator(
-            n_bins=n_bins, method="quantile_lcb", lcb_delta=0.05, lcb_type="kl"
-        ).fit(tr_s, tr_y)
-        cal_z = EmpiricalScoreCalibrator(
-            n_bins=n_bins, method="quantile_lcb", lcb_delta=0.05, lcb_type="kl"
-        ).fit(tr_z, tr_y)
+            from tts_theory.calibration_theory import compute_bin_calibrator_scores
 
-        # 同时评估带支撑上界截断的越界拒绝校准器（将超出干净训练集 99.8% 分位数的异常极值置零）
-        tr_hi_cap = float(np.quantile(tr_s, 0.998))
+            tr_s = np.concatenate([tr_src[i][1] for i in train_idx])
+            tr_y = np.concatenate([tr_src[i][2].astype(np.int64) for i in train_idx])
+            tr_z = np.concatenate([_z_pool(tr_src[i][1]) for i in train_idx])
 
-        def _eval_subset(indices: np.ndarray, src: list[tuple[str, np.ndarray, np.ndarray]], rng_seed: int) -> dict[str, np.ndarray]:
-            erng = np.random.default_rng(rng_seed)
-            m_len = int(indices.size)
-            out_raw = np.empty(m_len, dtype=np.float64)
-            out_pool = np.empty(m_len, dtype=np.float64)
-            out_z = np.empty(m_len, dtype=np.float64)
-            out_clipped = np.empty(m_len, dtype=np.float64)
-            for k_i, p_i in enumerate(indices):
-                _, s_p, y_p = src[int(p_i)]
-                # N = 64 等于全池大小，直接对全池求平局均匀期望正确率
-                q_pool = np.asarray(cal_pool.predict_proba(s_p), dtype=np.float64)
-                z_p = _z_pool(s_p)
-                q_z = np.asarray(cal_z.predict_proba(z_p), dtype=np.float64)
-                q_clip = np.where(s_p > tr_hi_cap, 0.0, q_pool)
+            cal_pool = EmpiricalScoreCalibrator(
+                n_bins=n_bins, method="quantile_lcb", lcb_delta=0.05, lcb_type="kl"
+            ).fit(tr_s, tr_y)
+            cal_z = EmpiricalScoreCalibrator(
+                n_bins=n_bins, method="quantile_lcb", lcb_delta=0.05, lcb_type="kl"
+            ).fit(tr_z, tr_y)
+            tr_hi_cap = float(np.quantile(tr_s, 0.998))
 
-                for arr_out, sc_vec in (
-                    (out_raw, s_p),
-                    (out_pool, q_pool),
-                    (out_z, q_z),
-                    (out_clipped, q_clip),
-                ):
-                    mx = float(np.max(sc_vec))
-                    ties = np.abs(sc_vec - mx) <= 1e-12
-                    arr_out[k_i] = float(np.mean(y_p[ties]))
-            _ = erng
-            return {"Standard-BoN": out_raw, "Pooled-KL-LCB": out_pool, "Within-Prompt-Z-KL-LCB": out_z, "Support-Clipped-KL-LCB": out_clipped}
+            # 严格遵循 Algorithm 1：按题目顺序前 50% 训练集定分位边与 99.8% 截断阈值，后 50% 估计阶梯 KL-LCB（无线性插值）
+            m_tot = int(tr_s.size)
+            m_half = m_tot // 2
+            s_edge_sorted = np.sort(tr_s[:m_half])
+            r_ord = np.floor(np.arange(1, n_bins, dtype=np.float64) * float(m_half + 1) / float(n_bins)).astype(np.int64)
+            r_ord = np.clip(r_ord - 1, 0, m_half - 1)
+            inner_edges = np.unique(s_edge_sorted[r_ord])
+            s_est, y_est = tr_s[m_half:], tr_y[m_half:]
+            k_cur = int(inner_edges.size + 1)
+            b_est = np.searchsorted(inner_edges, s_est, side="right")
+            cnts = np.bincount(b_est, minlength=k_cur).astype(np.float64)
+            poss = np.bincount(b_est, weights=y_est.astype(np.float64), minlength=k_cur)
+            alg1_scores = compute_bin_calibrator_scores(
+                cnts, poss, method="kl_lcb", prior_p=float(np.mean(y_est)), delta=0.05
+            )
+            alg1_s_max = float(s_edge_sorted[min(m_half - 1, max(0, math.ceil(0.998 * m_half) - 1))])
 
-        val_scores = _eval_subset(val_idx, va_src, 9101)
-        test_scores = _eval_subset(test_idx, te_src, 9102)
+            def _eval_subset(indices: np.ndarray, src: list[tuple[str, np.ndarray, np.ndarray]]) -> dict[str, np.ndarray]:
+                m_len = int(indices.size)
+                out_raw = np.empty(m_len, dtype=np.float64)
+                out_pool = np.empty(m_len, dtype=np.float64)
+                out_z = np.empty(m_len, dtype=np.float64)
+                out_clipped = np.empty(m_len, dtype=np.float64)
+                out_alg1_pool = np.empty(m_len, dtype=np.float64)
+                out_alg1_clip = np.empty(m_len, dtype=np.float64)
+                for k_i, p_i in enumerate(indices):
+                    _, s_p, y_p = src[int(p_i)]
+                    q_pool = np.asarray(cal_pool.predict_proba(s_p), dtype=np.float64)
+                    z_p = _z_pool(s_p)
+                    q_z = np.asarray(cal_z.predict_proba(z_p), dtype=np.float64)
+                    q_clip = np.where(s_p > tr_hi_cap, 0.0, q_pool)
+                    # Algorithm 1 严格分桶阶梯查找与支撑截断（均匀随机打破最大分桶平局之精确期望）
+                    b_p = np.searchsorted(inner_edges, s_p, side="right")
+                    q_a1_pool = alg1_scores[b_p]
+                    q_a1_clip = np.where(s_p > alg1_s_max, 0.0, q_a1_pool)
 
-        branches = ("Standard-BoN", "Pooled-KL-LCB", "Within-Prompt-Z-KL-LCB")
-        best_branch = max(branches, key=lambda b: float(np.mean(val_scores[b])))
-        hyb_test = test_scores[best_branch]
+                    for arr_out, sc_vec in (
+                        (out_raw, s_p),
+                        (out_pool, q_pool),
+                        (out_z, q_z),
+                        (out_clipped, q_clip),
+                        (out_alg1_pool, q_a1_pool),
+                        (out_alg1_clip, q_a1_clip),
+                    ):
+                        mx = float(np.max(sc_vec))
+                        ties = np.abs(sc_vec - mx) <= 1e-12
+                        arr_out[k_i] = float(np.mean(y_p[ties]))
+                return {
+                    "Standard-BoN": out_raw,
+                    "Pooled-KL-LCB": out_pool,
+                    "Within-Prompt-Z-KL-LCB": out_z,
+                    "Support-Clipped-KL-LCB": out_clipped,
+                    "Alg1-SampleSplit-KL-LCB": out_alg1_pool,
+                    "Alg1-SampleSplit-Support-Clipped": out_alg1_clip,
+                }
 
-        diff_vs_std = hyb_test - test_scores["Standard-BoN"]
-        sd_d = float(np.std(diff_vs_std, ddof=1))
-        if sd_d <= 1e-15:
-            p_vs_std = 1.0
-        else:
-            t_val = float(np.mean(diff_vs_std)) / (sd_d / math.sqrt(diff_vs_std.size))
-            p_vs_std = float(max(np.finfo(np.float64).tiny, 2.0 * stats.t.sf(abs(t_val), df=diff_vs_std.size - 1)))
+            val_scores = _eval_subset(val_idx, va_src)
+            test_scores = _eval_subset(test_idx, te_src)
+            branches = ("Standard-BoN", "Pooled-KL-LCB", "Within-Prompt-Z-KL-LCB")
+            best_branch = max(branches, key=lambda b: float(np.mean(val_scores[b])))
+            hyb_test = test_scores[best_branch]
+
+            diff_vs_std = hyb_test - test_scores["Standard-BoN"]
+            sd_d = float(np.std(diff_vs_std, ddof=1))
+            if sd_d <= 1e-15:
+                p_vs_std = 1.0
+            else:
+                t_val = float(np.mean(diff_vs_std)) / (sd_d / math.sqrt(diff_vs_std.size))
+                p_vs_std = float(max(np.finfo(np.float64).tiny, 2.0 * stats.t.sf(abs(t_val), df=diff_vs_std.size - 1)))
+
+            return {
+                "n_train": int(train_idx.size),
+                "n_val": int(val_idx.size),
+                "n_test": int(test_idx.size),
+                "selected_branch_n64": best_branch,
+                "standard_bon_n64": float(np.mean(test_scores["Standard-BoN"])),
+                "pooled_kl_lcb_n64": float(np.mean(test_scores["Pooled-KL-LCB"])),
+                "within_prompt_z_n64": float(np.mean(test_scores["Within-Prompt-Z-KL-LCB"])),
+                "hybrid_fixed_n64": float(np.mean(hyb_test)),
+                "support_clipped_kl_lcb_n64": float(np.mean(test_scores["Support-Clipped-KL-LCB"])),
+                "alg1_sample_split_kl_lcb_n64": float(np.mean(test_scores["Alg1-SampleSplit-KL-LCB"])),
+                "alg1_sample_split_support_clipped_n64": float(np.mean(test_scores["Alg1-SampleSplit-Support-Clipped"])),
+                "hybrid_minus_std_n64": float(np.mean(diff_vs_std)),
+                "p_value_ttest_vs_std": p_vs_std,
+            }
 
         return {
-            "n_train": int(train_idx.size),
-            "n_val": int(val_idx.size),
-            "n_test": int(test_idx.size),
-            "selected_branch_n64": best_branch,
-            "standard_bon_n64": float(np.mean(test_scores["Standard-BoN"])),
-            "pooled_kl_lcb_n64": float(np.mean(test_scores["Pooled-KL-LCB"])),
-            "within_prompt_z_n64": float(np.mean(test_scores["Within-Prompt-Z-KL-LCB"])),
-            "hybrid_fixed_n64": float(np.mean(hyb_test)),
-            "support_clipped_kl_lcb_n64": float(np.mean(test_scores["Support-Clipped-KL-LCB"])),
-            "hybrid_minus_std_n64": float(np.mean(diff_vs_std)),
-            "p_value_ttest_vs_std": p_vs_std,
+            "clean_train_clean_val_clean_test": _run_one(clean_pools, clean_pools, clean_pools),
+            "contam_train_contam_val_contam_test": _run_one(c_pools_list, c_pools_list, c_pools_list),
+            "clean_train_clean_val_contam_test_unseen_shift": _run_one(clean_pools, clean_pools, c_pools_list),
+            "clean_train_contam_val_contam_test_target_val": _run_one(clean_pools, c_pools_list, c_pools_list),
         }
 
-    return {
-        "clean_train_clean_val_clean_test": _eval_custom_split(clean_pools, clean_pools, clean_pools),
-        "contam_train_contam_val_contam_test": _eval_custom_split(contam_pools, contam_pools, contam_pools),
-        "clean_train_clean_val_contam_test_unseen_shift": _eval_custom_split(clean_pools, clean_pools, contam_pools),
-        "clean_train_contam_val_contam_test_target_val": _eval_custom_split(clean_pools, contam_pools, contam_pools),
-    }
+    out_shift = _eval_split_matrix(contam_pools)
+    q90 = float(np.quantile(all_rm_b, 0.90))
+    q985 = float(np.quantile(all_rm_b, 0.985))
+    in_support_pools = _inject_in_support_high_contamination(all_probs_ace, q90=q90, q985=q985, spike_rate=0.06, seed=202610)
+    out_shift["in_support_high_score_shift_matrix"] = _eval_split_matrix(in_support_pools)
+    return out_shift
 
 
 def run_natural_nonmonotone_collapse_audit(all_probs_ace: list[dict[str, Any]]) -> dict[str, Any]:
-    """Checklist #7：零人工污染注入，审计公开真实子集上自然发生的右尾倒挂与 BoN 回撤实例。"""
-    print("[V10] Auditing naturally occurring real-world non-monotone / tail-inversion subsets...")
+    """Checklist #7 + 第五轮 P1-04：全 14 组多重比较校正与无峰选偏倚的 50/50 样本分割确认检验。"""
+    print("[V10] Auditing naturally occurring real-world non-monotone subsets (14 tests + 50/50 split confirmatory)...")
     n_grid_64 = [1, 2, 4, 8, 16, 32, 64]
-    natural_subsets = []
+    all_14_records: list[dict[str, Any]] = []
+    natural_subsets: list[dict[str, Any]] = []
 
     for sub_name, _, _ in rs2.ACEMATH_SEGMENTS:
         sub_probs = [p for p in all_probs_ace if p["subset"] == sub_name]
@@ -366,29 +427,65 @@ def run_natural_nonmonotone_collapse_audit(all_probs_ace: list[dict[str, Any]]) 
             curve = np.mean(mat, axis=0)
             peak_idx = int(np.argmax(curve))
             drop = float(curve[peak_idx] - curve[-1])
-            if drop > 1e-4:
-                diffs = mat[:, peak_idx] - mat[:, -1]
-                sd = float(np.std(diffs, ddof=1))
-                se = sd / math.sqrt(len(sub_probs))
-                t_val = float(np.mean(diffs)) / se if se > 1e-15 else 0.0
-                p_t = float(2.0 * stats.t.sf(abs(t_val), df=len(sub_probs) - 1)) if se > 1e-15 else 1.0
-                natural_subsets.append(
-                    {
-                        "dataset": f"AceMath/{sub_name}/{rm_key.upper()}",
-                        "n_problems": len(sub_probs),
-                        "n_peak": n_grid_64[peak_idx],
-                        "acc_peak": float(curve[peak_idx]),
-                        "n_max": 64,
-                        "acc_n_max": float(curve[-1]),
-                        "drop_peak_to_max": drop,
-                        "se_drop": se,
-                        "p_value_ttest_two_sided": p_t,
-                        "exact_curve": [float(v) for v in curve],
-                    }
-                )
+            diffs = mat[:, peak_idx] - mat[:, -1]
+            sd = float(np.std(diffs, ddof=1))
+            se = sd / math.sqrt(len(sub_probs))
+            t_val = float(np.mean(diffs)) / se if (drop > 1e-12 and se > 1e-15) else 0.0
+            p_t = float(2.0 * stats.t.sf(abs(t_val), df=len(sub_probs) - 1)) if (drop > 1e-12 and se > 1e-15) else 1.0
+            rec = {
+                "dataset": f"AceMath/{sub_name}/{rm_key.upper()}",
+                "n_problems": len(sub_probs),
+                "n_peak": n_grid_64[peak_idx],
+                "acc_peak": float(curve[peak_idx]),
+                "n_max": 64,
+                "acc_n_max": float(curve[-1]),
+                "drop_peak_to_max": drop,
+                "se_drop": se,
+                "p_value_ttest_two_sided": p_t,
+                "exact_curve": [float(v) for v in curve],
+            }
+            all_14_records.append(rec)
 
-    # 对最显著的自然回撤子集 college_math (RM-B, P=2,818) 执行独立 50/20/30 单次留出校准测试
-    cm_pools = [(p["subset"], p["rm_b"], p["is_correct"]) for p in all_probs_ace if p["subset"] == "college_math"]
+    # 跨 7 子集 x 2 RM = 14 组计算 Bonferroni 与 Holm-Bonferroni 校正 p 值
+    m_tests = len(all_14_records)
+    raw_ps = np.array([r["p_value_ttest_two_sided"] for r in all_14_records], dtype=np.float64)
+    order = np.argsort(raw_ps)
+    holm_ps = np.empty(m_tests, dtype=np.float64)
+    prev = 0.0
+    for rank, idx_r in enumerate(order):
+        adj = min(1.0, float((m_tests - rank) * raw_ps[idx_r]))
+        prev = max(prev, adj)
+        holm_ps[idx_r] = prev
+
+    for i_r, rec in enumerate(all_14_records):
+        rec["p_value_bonferroni_14"] = min(1.0, float(m_tests * rec["p_value_ttest_two_sided"]))
+        rec["p_value_holm_14"] = float(holm_ps[i_r])
+        if rec["drop_peak_to_max"] > 1e-4:
+            natural_subsets.append(rec)
+
+    # 无峰选偷窥偏倚的 50/50 独立样本分割确认检验（在 college_math RM-B 上 P=2,818 -> 1,409 选峰 / 1,409 检验）
+    cm_probs = [p for p in all_probs_ace if p["subset"] == "college_math"]
+    cm_mat = np.asarray(
+        [exact_pool_bon_accuracy(p["rm_b"], p["is_correct"], n_grid_64) for p in cm_probs],
+        dtype=np.float64,
+    )
+    split_rng = np.random.default_rng(202611)
+    perm_cm = split_rng.permutation(len(cm_probs))
+    half_cm = len(cm_probs) // 2
+    sel_mat = cm_mat[perm_cm[:half_cm]]
+    conf_mat = cm_mat[perm_cm[half_cm:]]
+
+    sel_curve = np.mean(sel_mat, axis=0)
+    peak_idx_sel = int(np.argmax(sel_curve))
+    conf_curve = np.mean(conf_mat, axis=0)
+    conf_diffs = conf_mat[:, peak_idx_sel] - conf_mat[:, -1]
+    conf_drop = float(np.mean(conf_diffs))
+    conf_se = float(np.std(conf_diffs, ddof=1)) / math.sqrt(conf_mat.shape[0])
+    conf_t = conf_drop / conf_se if conf_se > 1e-15 else 0.0
+    conf_p = float(2.0 * stats.t.sf(abs(conf_t), df=conf_mat.shape[0] - 1)) if conf_se > 1e-15 else 1.0
+
+    # 对探索性候选子集 college_math (RM-B, P=2,818) 执行独立 50/20/30 单次留出校准测试
+    cm_pools = [(p["subset"], p["rm_b"], p["is_correct"]) for p in cm_probs]
     cm_single_split = evaluate_single_split_prompt_heterogeneity(
         cm_pools,
         n_values=n_grid_64,
@@ -399,7 +496,20 @@ def run_natural_nonmonotone_collapse_audit(all_probs_ace: list[dict[str, Any]]) 
     )
 
     return {
+        "n_family_tests": m_tests,
+        "all_14_subset_audits": all_14_records,
         "acemath_natural_overoptimization_instances": natural_subsets,
+        "split_sample_confirmatory_college_math_rm_b": {
+            "n_sel": int(sel_mat.shape[0]),
+            "n_conf": int(conf_mat.shape[0]),
+            "n_peak_sel": n_grid_64[peak_idx_sel],
+            "acc_peak_sel": float(sel_curve[peak_idx_sel]),
+            "acc_peak_conf": float(conf_curve[peak_idx_sel]),
+            "acc_n64_conf": float(conf_curve[-1]),
+            "drop_conf": conf_drop,
+            "se_conf": conf_se,
+            "p_value_conf_two_sided": conf_p,
+        },
         "college_math_rm_b_single_split": cm_single_split,
     }
 
@@ -432,13 +542,20 @@ def main() -> None:
             )
     print("=== Distribution Shift Matrix ===")
     for r_name, r_val in shift_matrix.items():
-        print(f"  {r_name}: {r_val}")
-    print("=== Natural Overoptimization Subsets ===")
+        if r_name == "in_support_high_score_shift_matrix":
+            print("  --- In-Support High-Score [q90, q985] Shift Matrix ---")
+            for sr_k, sr_v in r_val.items():
+                print(f"    {sr_k}: {sr_v}")
+        else:
+            print(f"  {r_name}: {r_val}")
+    print("=== Natural Overoptimization Subsets (14-Test Family) ===")
     for item in natural_audit["acemath_natural_overoptimization_instances"]:
         print(
             f"  {item['dataset']} (P={item['n_problems']}): peak N={item['n_peak']} ({item['acc_peak']:.4f}) -> "
-            f"N=64 ({item['acc_n_max']:.4f}), drop={item['drop_peak_to_max']:+.4f} ± {item['se_drop']:.4f} (p_t={item['p_value_ttest_two_sided']:.4g})"
+            f"N=64 ({item['acc_n_max']:.4f}), drop={item['drop_peak_to_max']:+.4f} ± {item['se_drop']:.4f} "
+            f"(p_raw={item['p_value_ttest_two_sided']:.4g}, p_Bonf14={item['p_value_bonferroni_14']:.4g}, p_Holm14={item['p_value_holm_14']:.4g})"
         )
+    print("  [50/50 Split-Sample Confirmatory]", natural_audit["split_sample_confirmatory_college_math_rm_b"])
     cm = natural_audit["college_math_rm_b_single_split"]
     cm_a = cm["algorithms"]
     print(

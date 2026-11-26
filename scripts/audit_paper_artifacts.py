@@ -1,11 +1,12 @@
-"""论文产物自动化静态质量审计脚本。
+"""论文产物自动化静态质量与编译页界审计脚本。
 
-在不依赖本地 TeX 编译器的情况下，对 paper/ 与跨文档同步状态执行五项硬断言校验：
-1. LaTeX 语法、环境栈配对、花括号平衡及 NeurIPS 样式包冲突检查；
+对 paper/ 与跨文档同步状态执行六项硬断言校验：
+1. LaTeX 语法、环境栈配对、花括号平衡及 NeurIPS 2026 官方样式约束检查；
 2. 标签与引用闭环检查（0 未定义引用、0 未引用死标签、27/27 BibTeX 覆盖率）；
 3. 论文主图矢量 .pdf 与 300 DPI .png 文件完整性检查；
-4. 实验数值防回归检查、摘要词数范围检查与跨产物旧符号回归检查；
-5. 公开文档本地绝对路径隐私泄漏检查。
+4. 实验数值与第五轮审稿数学表述防回归检查（Algorithm 1 平局规则、Safe-Fisher 正交分支、Z-Score 适用域、16 项 Checklist 等）；
+5. 编译产物 paper/main.pdf 正文页数（<= 9 页）与 References 边界校验（若存在 PyPDF2）；
+6. 公开文档本地绝对路径隐私泄漏检查。
 """
 
 from __future__ import annotations
@@ -17,8 +18,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PAPER_DIR = PROJECT_ROOT / "paper"
 MAIN_TEX = PAPER_DIR / "main.tex"
+MAIN_PDF = PAPER_DIR / "main.pdf"
 REFS_BIB = PAPER_DIR / "references.bib"
-STY_FILE = PAPER_DIR / "neurips_2025.sty"
+STY_FILE = PAPER_DIR / "neurips_2026.sty"
 FIG_DIR = PAPER_DIR / "figures"
 
 
@@ -40,23 +42,33 @@ def _strip_comments(tex: str) -> str:
 
 
 def _check_latex_syntax(tex: str, tex_nocomment: str) -> list[str]:
-    """检查环境配对、花括号平衡以及宏包/样式约束。"""
+    """检查环境配对、花括号平衡以及宏包/NeurIPS 2026 官方样式约束。"""
     errors: list[str] = []
 
+    if (PAPER_DIR / "neurips_2025.sty").exists():
+        errors.append("仓库内仍残留旧版样式 paper/neurips_2025.sty，应使用 paper/neurips_2026.sty")
+
     if not STY_FILE.exists():
-        errors.append("缺少 paper/neurips_2025.sty")
+        errors.append("缺少官方样式文件 paper/neurips_2026.sty")
     else:
         sty_txt = STY_FILE.read_text(encoding="utf-8")
-        if r"\ProvidesPackage{neurips_2025}" not in sty_txt:
-            errors.append("paper/neurips_2025.sty 中 \\ProvidesPackage 与文件名不一致")
+        if r"\ProvidesPackage{neurips_2026}" not in sty_txt:
+            errors.append("paper/neurips_2026.sty 中 \\ProvidesPackage 与文件名不一致")
 
-    if r"\usepackage[preprint]{neurips_2025}" not in tex and r"\usepackage{neurips_2025}" not in tex:
-        errors.append("main.tex 未加载 neurips_2025 样式包")
+    if (
+        r"\usepackage[preprint]{neurips_2026}" not in tex_nocomment
+        and r"\usepackage{neurips_2026}" not in tex_nocomment
+        and r"\usepackage[main]{neurips_2026}" not in tex_nocomment
+    ):
+        errors.append("main.tex 未加载官方 neurips_2026 样式包")
+
+    if "neurips_2025" in tex_nocomment:
+        errors.append("main.tex 正文仍残留旧样式引用 neurips_2025")
 
     if re.search(r"\\usepackage(\[[^\]]*\])?\{geometry\}", tex_nocomment):
-        errors.append("main.tex 存在冗余的 geometry 宏包加载（与 neurips_2025.sty 冲突）")
+        errors.append("main.tex 存在冗余的 geometry 宏包加载（与 neurips_2026.sty 冲突）")
     if re.search(r"\\usepackage(\[[^\]]*\])?\{lmodern\}", tex_nocomment):
-        errors.append("main.tex 存在冗余的 lmodern 宏包加载（覆盖 neurips_2025.sty ptm 字体）")
+        errors.append("main.tex 存在冗余的 lmodern 宏包加载（覆盖 neurips_2026.sty ptm 字体）")
 
     # 检查 \begin{...} / \end{...} 配对
     stack: list[str] = []
@@ -163,7 +175,7 @@ def _check_figures(tex_nocomment: str) -> tuple[list[str], list[str]]:
 
 
 def _check_numbers_abstract_and_hygiene(tex_nocomment: str, bib_txt: str) -> tuple[list[str], dict[str, object]]:
-    """检查数值防回归、摘要词数、跨文件一致性和本地路径洁净度。"""
+    """检查数值与数学表述防回归、Checklist 完整性、PDF 页界、摘要词数及路径洁净度。"""
     errors: list[str] = []
 
     if "0.4366" in tex_nocomment or "43.66" in tex_nocomment:
@@ -173,14 +185,36 @@ def _check_numbers_abstract_and_hygiene(tex_nocomment: str, bib_txt: str) -> tup
     if "N_{\\mathrm{match}}" in tex_nocomment or "N_match" in tex_nocomment:
         errors.append("paper/main.tex 仍残留旧符号 N_match")
 
-    # 摘要词数检查（去掉常见 LaTeX 控制词与公式外壳，按空格分词估算英文自然词数）
+    # 第五轮审稿不变量校验（P0-01/P0-02/P1-01/P1-04/P1-05/P1-06/P0-08）
+    if "breaking ties by raw score" in tex_nocomment.lower():
+        errors.append("paper/main.tex 仍包含破坏 Minimax 证明的按 raw score 破平局分支")
+    if "strictly uniform random tie-breaking" not in tex_nocomment:
+        errors.append("paper/main.tex Algorithm 1 缺少 strictly uniform random tie-breaking 要求")
+    if "Degenerate orthogonal branch" not in tex_nocomment:
+        errors.append("paper/main.tex Theorem 5 缺少 Degenerate orthogonal branch 正交边界分支")
+    if "whenever unsolvable prompts exist" in tex_nocomment.lower():
+        errors.append("paper/main.tex 仍包含过宽的 'whenever unsolvable prompts exist' 表述")
+    if r"\pi_0 > 0 = \pi_1" not in tex_nocomment:
+        errors.append("paper/main.tex 缺少严格限定条件 \\pi_0 > 0 = \\pi_1")
+    for required_tok in ("0.2908", "0.3629", "0.3785", "NeurIPS Paper Checklist"):
+        if required_tok not in tex_nocomment:
+            errors.append(f"paper/main.tex 缺少第五轮审稿必需核验条目或数值: {required_tok}")
+
+    if r"\answerTODO" in tex_nocomment:
+        errors.append("NeurIPS Paper Checklist 仍残留未填写的 \\answerTODO")
+    n_checklist_answers = len(re.findall(r"Answer:\s*\\answer(?:Yes|No|NA)\{\}", tex_nocomment))
+    if n_checklist_answers != 16:
+        errors.append(f"NeurIPS Paper Checklist 回答数量必须为 16 项，当前检测到 {n_checklist_answers} 项")
+
+    # 摘要词数与限定条件检查
     m_abs = re.search(r"\\begin\{abstract\}(.*?)\\end\{abstract\}", tex_nocomment, re.S)
     abs_words = 0
     if not m_abs:
         errors.append("paper/main.tex 缺少 abstract 环境")
     else:
         raw_abs = m_abs.group(1)
-        # 用占位符近似数学内联块，统计可读英文词数
+        if r"\pi_0 > 0 = \pi_1" not in raw_abs:
+            errors.append("Abstract 中缺少 Z-Score 严格适用限定 \\pi_0 > 0 = \\pi_1")
         norm_abs = re.sub(r"\\[a-zA-Z]+\*?(\[[^\]]*\])?\{([^\}]*)\}", r" \2 ", raw_abs)
         norm_abs = re.sub(r"\\[a-zA-Z]+", " ", norm_abs)
         norm_abs = re.sub(r"[${}\[\]\\^_~`]", " ", norm_abs)
@@ -189,9 +223,34 @@ def _check_numbers_abstract_and_hygiene(tex_nocomment: str, bib_txt: str) -> tup
         if not (160 <= abs_words <= 240):
             errors.append(f"Abstract 词数超出顶会目标区间 [160, 240]: {abs_words} 词")
 
-    # README 与 RELATED_WORK 同步检查
+    # 编译版 main.pdf 正文页数（<= 9 页）检验
+    pdf_pages: int | None = None
+    if MAIN_PDF.exists():
+        try:
+            import PyPDF2
+
+            reader = PyPDF2.PdfReader(str(MAIN_PDF))
+            pdf_pages = len(reader.pages)
+            page_texts = [page.extract_text() or "" for page in reader.pages]
+            for marker in ("Figure 4:", "8 Discussion"):
+                found_idx = next((idx for idx, txt in enumerate(page_texts) if marker in txt), None)
+                if found_idx is None:
+                    errors.append(f"paper/main.pdf 未检出标记: {marker}")
+                elif found_idx > 8:
+                    errors.append(f"paper/main.pdf 正文内容溢出第 9 页：{marker} 出现在第 {found_idx + 1} 页")
+            refs_idx = next((idx for idx, txt in enumerate(page_texts) if "References" in txt), None)
+            if refs_idx is None:
+                errors.append("paper/main.pdf 未检出 References")
+            else:
+                if any("Figure 4:" in txt for txt in page_texts[refs_idx:]):
+                    errors.append("paper/main.pdf 中 Figure 4 浮动到了 References 页及之后")
+        except ImportError:
+            pass
+
+    # README、RELATED_WORK 与 EXPERIMENT_REPORT 同步检查
     readme_txt = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     rel_txt = (PROJECT_ROOT / "RELATED_WORK.md").read_text(encoding="utf-8")
+    report_txt = (PROJECT_ROOT / "results" / "EXPERIMENT_REPORT.md").read_text(encoding="utf-8")
     audit_txt = (PAPER_DIR / "REVIEW_AUDIT.md").read_text(encoding="utf-8") if (PAPER_DIR / "REVIEW_AUDIT.md").exists() else ""
 
     if "22 篇" in readme_txt:
@@ -199,21 +258,18 @@ def _check_numbers_abstract_and_hygiene(tex_nocomment: str, bib_txt: str) -> tup
     if "V9 主次聚焦" in readme_txt:
         errors.append("README.md 仍残留旧版本标题 'V9 主次聚焦'")
 
-    # 从 RELATED_WORK.md 提取 BibTeX 代码块并与 paper/references.bib 比对
     m_bib_blk = re.search(r"```bibtex\s*(.*?)\s*```", rel_txt, re.S)
     if not m_bib_blk:
         errors.append("RELATED_WORK.md 缺少 BibTeX 代码块")
     elif m_bib_blk.group(1).strip() != bib_txt.strip():
         errors.append("RELATED_WORK.md 中的 BibTeX 与 paper/references.bib 未完全逐字节同步")
 
-    # 检查 plot_paper_figures.py 和 plot_stage2_figures.py 渲染字符串无 N_match（允许读取 JSON key n_match_theory_by_m）
     for py_name in ("plot_paper_figures.py", "plot_stage2_figures.py"):
         py_txt = (PROJECT_ROOT / "scripts" / py_name).read_text(encoding="utf-8")
         cleaned_py = py_txt.replace("n_match_theory_by_m", "").replace("n_match", "")
         if "N_{\\mathrm{match}}" in cleaned_py or "N_match" in cleaned_py:
             errors.append(f"scripts/{py_name} 显示文本中仍残留旧符号 N_match")
         if "Hybrid-Adaptive" in cleaned_py:
-            # 仅允许字典查键名 ["Hybrid-Adaptive-KL-LCB"]，禁止在图例/标题字符串里显示
             stripped_py = cleaned_py.replace('["Hybrid-Adaptive-KL-LCB"]', "").replace('"Hybrid-Adaptive-KL-LCB",', "")
             if "Hybrid-Adaptive" in stripped_py:
                 errors.append(f"scripts/{py_name} 展示文本中仍残留旧命名 Hybrid-Adaptive")
@@ -223,6 +279,7 @@ def _check_numbers_abstract_and_hygiene(tex_nocomment: str, bib_txt: str) -> tup
     for doc_name, doc_txt in [
         ("README.md", readme_txt),
         ("RELATED_WORK.md", rel_txt),
+        ("results/EXPERIMENT_REPORT.md", report_txt),
         ("paper/main.tex", tex_nocomment),
         ("paper/REVIEW_AUDIT.md", audit_txt),
     ]:
@@ -230,7 +287,11 @@ def _check_numbers_abstract_and_hygiene(tex_nocomment: str, bib_txt: str) -> tup
             if re.search(pat, doc_txt):
                 errors.append(f"{doc_name} 疑似包含本地绝对路径泄漏 ({pat})")
 
-    return errors, {"abstract_approx_words": abs_words}
+    return errors, {
+        "abstract_approx_words": abs_words,
+        "checklist_answers": n_checklist_answers,
+        "main_pdf_pages": pdf_pages,
+    }
 
 
 def main() -> int:
@@ -250,6 +311,9 @@ def main() -> int:
     print(f"- BibTeX 条目 / 正文引用: {ref_stats['n_cited_keys']} / {ref_stats['n_bib_keys']}")
     print(f"- 矢量插图清单: {fig_stems}")
     print(f"- Abstract 估算英文词数: {meta_stats['abstract_approx_words']} 词")
+    print(f"- NeurIPS 2026 Checklist 回答项: {meta_stats['checklist_answers']} / 16")
+    if meta_stats["main_pdf_pages"] is not None:
+        print(f"- 编译产物 paper/main.pdf 总页数: {meta_stats['main_pdf_pages']} 页（正文严格 <= 9 页）")
 
     if all_errors:
         print("\n[FAIL] 发现以下问题:")
@@ -257,7 +321,7 @@ def main() -> int:
             print(f"  - {err}")
         return 1
 
-    print("\n[PASS] 全部静态语法、标签引用闭环、矢量图表、数值防回归与路径洁净度检查 100% 通过。")
+    print("\n[PASS] 全部静态语法、NeurIPS 2026 规范、第五轮审稿不变量、标签引用闭环、矢量图表及路径洁净度检查 100% 通过。")
     return 0
 
 

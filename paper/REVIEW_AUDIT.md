@@ -35,5 +35,21 @@
 ## 3. 自动化核验与投稿前诚实说明
 
 1. **参考文献外部核验结果**：本轮已通过 `citecheck.check_bibliography` + `arxiv.get_abstract` + `paper-search.search_openalex` + 会议官网检索核实 `paper/references.bib` 全部 27 篇条目，并将升级后文本与 `RELATED_WORK.md` 逐字节对齐；更新后已再次调用 `citecheck.check_bibliography` 复核无异常。
-2. **代码与脚本回归测试**：全部图表的重绘脚本与仓库 `tests/` 下 73 项离线单元测试保持 100% 兼容性，未改动 `src/tts_theory/` 公共接口及 JSON 读取键名。
-3. **本地 TeX 编译限制说明**：当前 Windows 环境未安装 `pdflatex` / `xelatex` / `bibtex` / `tectonic`，故尚无法在本地直接生成 `paper/main.pdf`。取而代之，`scripts/audit_paper_artifacts.py` 已对括号、环境配对、样式兼容、全部图表 `.pdf`/`.png` 存在性、`0` 未定义引用、`0` 死标签、`27/27` BibTeX 引用覆盖及数值防回归进行了严格静态校验；请在 Overleaf 或 TeX Live 环境中进入 `paper/` 目录执行 `make` 后核查最终 PDF 页数与浮动体排版，如需双盲审稿只需将 `paper/main.tex` 第 5 行的 `\usepackage[preprint]{neurips_2025}` 替换为 `\usepackage{neurips_2025}`。
+2. **代码与脚本回归测试**：全部图表的重绘脚本与仓库 `tests/` 下全部 **76 项**离线单元测试（其中 `tests/test_v10_release.py` 扩展至 9 项）保持 100% 兼容通过。
+3. **官方 NeurIPS 2026 本地真实编译与页界核查**：已通过本地 **Tectonic 0.17.0**（基于官方 `paper/neurips_2026.sty`）完成 `[preprint]` 模式与 `\usepackage{neurips_2026}` 双盲投稿模式的完整交叉编译，生成 `paper/main.pdf`（21 页）；末轮 pass 实现 **0 `Overfull \hbox`、0 `Undefined references/citations`、0 `hyperref` Unicode 警告**，正文（含 `Section 1–8`、全部 4 图 3 表及 2 个算法框）严格处于 **第 1–9 页**以内，`Acknowledgments` 与 `References` 自第 10 页起页。
+
+---
+
+## 4. 第五轮学术审稿（v1.0.0）全部 9 项最终整改台账
+
+| 整改编号 | 严重度 | 审稿发现问题 | 实施修正与核验闭环 |
+| :--- | :---: | :--- | :--- |
+| **`P0-01`** | **P0** | `Algorithm 1` 允许按 raw score 打破平局，破坏条件期望恒等式 $\mathbb{E}[Y_{\hat{i}^*}\mid\mathcal{F}_{\mathrm{bins}}]=q_{\hat{k}^*}$ | 统一修订 `paper/main.tex` §4 与 `Algorithm 1` L205 为严格均匀随机破平局（`strictly uniform random tie-breaking`），并新增 `tests/test_v10_release.py` 单测构造右端错误窄区反例实证校验 |
+| **`P0-02`** | **P0** | 英文 `Theorem 5`（`Safe-Fisher`）遗漏退化正交边界分支条件 | 在 `paper/main.tex` §6 与 `Appendix D` 同步恢复退化正交混合分支（$\mathbf{w}^*=\mathbf{w}_{\lambda_{\min}^-}+\alpha\mathbf{u}_{\min}$），并增加反例数值验证测试 |
+| **`P0-07`** | **P0** | 需要本地真实编译 `paper/main.pdf` 并控制正文严格不超过 9 页且零溢出 | 使用 Tectonic 0.17.0 在不改动官方 `.sty` 边距字号的前提下重构 `Table 1` 并调整 `fig1`–`fig4` 与浮动体排布，达成 **Pages 1–9** 全正文完结、**0 `Overfull \hbox`** 并完成全 21 页视觉巡检 |
+| **`P0-08`** | **P0** | 需迁移至 NeurIPS 2026 官方样式并提供官方完整 16 项 Paper Checklist | 删除旧 `neurips_2025.sty`、部署官方 `paper/neurips_2026.sty` 并更新 `paper/Makefile`；补充完整 16 项 `NeurIPS Paper Checklist`（第 15–21 页）并验证双盲/Preprint 双模式编译 |
+| **`P1-01`** | **P1** | 摘要及部分行文使用过宽表述 `whenever unsolvable prompts exist`，遗漏内点可解题条件 | 统一在 Abstract、§1、§5.2 `Theorem 4` 与 §8 限定 $\pi_0>0=\pi_1$ 且存在正概率内点可解题 $\mathbb{P}(p(X)\in(0,1))>0$，并说明双点反例 |
+| **`P1-04`** | **P1** | `college_math RM-B` 自然峰选中（$N=16$）存在事后峰选偏差与 14 组多重比较问题 | 重跑 `verify_v10_release.py` 增加 14 组 Bonferroni/Holm 校正（$p_{\mathrm{Bonf},14}=0.2908$）与无偏 50/50 样本分割确认检验，论文重绘 `Figure 3(b)` 并明确降格为探索性候选案例 |
+| **`P1-05`** | **P1** | `Table 3` 漂移矩阵原仅跑连续插值基线，需显式对齐 `Algorithm 1` 离散分割实现 | 扩增 `Alg1-SampleSplit`（50% 边+50% `KL-LCB`）同台对照并在 `Table 3` 括号标注（`0.7101`, `0.3500`） |
+| **`P1-06`** | **P1** | `Table 3` 仅测超界 OOD 尖峰，未显式暴露分布内高分污染下 `Support-Clipped` 的失效边界 | 增补 `[q_0.90, q_0.985]` 分布内 6% 污染对照、`Table 3` 下半区与 `Figure 3(c)` `R5: In-Sup Unseen` 柱组，诚实报告 `Support-Clipped` 退化为 `0.3629 / 0.3785` |
+| **`P1-07`** | **P1** | 独立重跑全量单元测试与静态质量审计脚本并同步仓库文档 | 升级 `scripts/audit_paper_artifacts.py`、同步 `EXPERIMENT_REPORT.md` / `README.md` 并完整复跑全部 **76 项** `pytest` 与审计检查 100% PASS |

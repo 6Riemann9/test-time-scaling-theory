@@ -494,28 +494,31 @@
 
 这组公平消融揭示了清晰的二元互补规律：（1）当后验峰较宽且采用粗桶 $K_{\text{split}}(M)=3\sim 5$ 时，抗过拟合收益主要来自**桶数正则化**；（2）当需要中等或较细分桶（如 $K=30$）以隔离窄幅右尾污染时，小样本下同 $K$ 的 `MLE` 会出现 `+1.2 ~ +2.8 pp` 的稀疏桶赢家诅咒退化，此时 `Wilson-LCB` / `KL-LCB` 与 Laplace 平滑提供实质保护。
 
-### 14.2 训练干净 vs 测试污染的四相分布漂移对照矩阵（`AceMath RM-B`, $N=64$）
+### 14.2 未知分布漂移边界：OOD 超界尖峰 vs 分布内 `[q_0.90, q_0.985]` 污染及离散 `Algorithm 1` 对齐（`AceMath RM-B`, $N=64$）
 
-为严格检验方法在**未知分布漂移（Unseen Distribution Shift）**下的真实边界，我们在同一 `Train=4,494 / Val=1,798 / Held-Out Test=2,695` 划分上对比四种训练/验证/测试污染组合（并增设将超出干净训练集 `99.8%` 分位数的越界异常高分置零的支撑截断基线 `Support-Clipped-KL-LCB`）：
+为严格检验方法在**未知分布漂移（Unseen Distribution Shift）**下的真实边界并消除全量连续插值（`EmpiricalScoreCalibrator`）与论文离散 `Algorithm 1`（`Alg1-SampleSplit`）之间的协议偏差，我们在同一 `Train=4,494 / Val=1,798 / Held-Out Test=2,695` 划分上同时对比 **OOD 越界尖峰（`> q_0.995 + 0.8*sd`）** 与 **分布内高分污染（`[q_0.90, q_0.985]`，低于 `99.8%` 干净分位帽）** 两类攻击（括号内为严格离散样本分割 `Algorithm 1` 实测值）：
 
-| 分布环境（Train / Val $\to$ Test） | 验证集选中 $\hat{m}$ | `Standard-BoN` | `Pooled-KL-LCB` | `Within-Prompt-Z` | `Hybrid-Fixed` | `Support-Clipped` | 机制与局限性解读 |
+| 分布环境（Train / Val $\to$ Test） | 验证集 $\hat{m}$ | `Standard-BoN` | `Pooled-LCB` (`[Alg.1]`) | `Within-Prompt-Z` | `Hybrid-Fixed` | `Support-Clipped` (`[Alg.1]`) | 机制与失效边界解读 |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **1. 全干净**（`Clean / Clean -> Clean`） | `Standard-BoN` | `0.7083` | `0.7090` | `0.6690` | **`0.7083`** | `0.7090` | 无污染时门控保留 `Standard-BoN` |
-| **2. 同分布污染**（`Contam / Contam -> Contam`） | `Within-Prompt-Z` | `0.2865` | `0.7124` | `0.7093` | **`0.7093`** | `0.7124` | 已知污染类型下校准与门控挽回 **`+42.29 pp`** |
-| **3. 纯测试未知漂移**（`Clean / Clean -> Contam`） | `Standard-BoN` | `0.2865` | **`0.3159`** | **`0.7024`** | **`0.2865`** | **`0.7108`** | **关键负结果与机制发现**：未见污染时 `Pooled` 把超界尖峰归入干净最高分桶而同样跌至 `31.59%`，`Hybrid` 无目标验证信号亦停留在 `28.65%`；但干净集训练的 `Within-Z`（因定理 7C 极右尾本身受压制）与越界截断 `Support-Clipped` 分别保持 `70.24%` 与 `71.08%` |
-| **4. 仅验证集目标审计**（`Clean / Contam -> Contam`） | `Within-Prompt-Z` | `0.2865` | `0.3159` | `0.7024` | **`0.7024`** | `0.7108` | **无需重训校准器**：仅凭目标环境小规模验证集审计，`Hybrid-Fixed` 即切换至干净训练的 `Within-Z` 挽回 **`+41.60 pp`**（$p_t = 5.65\times 10^{-305}$） |
+| **1. 全干净**（`Clean / Clean -> Clean`） | `Standard-BoN` | `0.7083` | `0.7090` [`0.7087`] | `0.6690` | **`0.7083`** | `0.7090` [`0.7086`] | 无污染时门控保留 `Standard-BoN` |
+| **2a. OOD 同分布污染** | `Within-Prompt-Z` | `0.2865` | `0.7124` [`0.7092`] | `0.7093` | **`0.7093`** | `0.7124` [`0.7092`] | 已知 OOD 污染下两类校准器均稳健恢复 |
+| **3a. OOD 纯测试未知漂移** | `Standard-BoN` | `0.2865` | `0.3159` [`0.3500`] | `0.7024` | **`0.2865`** | **`0.7108` [`0.7101`]** | OOD 超界尖峰可被 `99.8%` 支撑截断与 `Within-Z` 拦下 |
+| **4a. OOD 目标验证集审计** | `Within-Prompt-Z` | `0.2865` | `0.3159` [`0.3500`] | `0.7024` | **`0.7024`** | **`0.7108` [`0.7101`]** | 小规模目标验证集触发 `Hybrid` 挽回 `+41.60 pp` |
+| **2b. 分布内高分同分布污染** | `Within-Prompt-Z` | `0.3627` | `0.6599` [`0.6821`] | **`0.6868`** | **`0.6868`** | `0.6599` [`0.6821`] | 已知分布内污染下两类实现均可通过校准学习避开 |
+| **3b. 分布内纯测试未知漂移** | `Standard-BoN` | `0.3627` | `0.3629` [`0.3787`] | **`0.6907`** | **`0.3627`** | **`0.3629` [`0.3785`]** | **诚实失效边界**：对抗分数未越 `99.8%` 帽，`Support-Clipped` 失效退化至 `0.3629/0.3785`（与 `Raw=0.3627` 几乎等同） |
+| **4b. 分布内目标验证集审计** | `Within-Prompt-Z` | `0.3627` | `0.3629` [`0.3787`] | **`0.6907`** | **`0.6907`** | `0.3629` [`0.3785`] | 仅依赖目标验证审计切换至 `Within-Z` 仍可挽回 **`+32.80 pp`**（$p_t < 10^{-215}$） |
 
-### 14.3 零人工注入的自然过优化回撤子集审计（`AceMath/college_math` 等公开基准）
+### 14.3 零人工注入的多重比较校正与 50/50 独立确认审计（探索性候选案例）
 
-在完全不注入任何人工噪声的自然公开数据上，对 `AceMath-RewardBench` 各子集检验真实奖励模型 `Standard-BoN` 从有限峰值 $N_{\text{peak}}$ 到最大预算 $N=64$ 的自然回撤：
-- **`AceMath / college_math / Official RM-B`（$P = 2{,}818$ 道真实大学数学题 × 64 候选，零人工修改）**：全集精确 `Standard-BoN` 在 $N=16$ 达到峰值 **`0.4640`**，随后在 $N=32$（`0.4611`）与 $N=64$（**`0.4579`**）持续回落，配对差值为 **`-0.60 pp ± 0.26 pp`**（双侧配对 $t$ 检验 **$p_t = 0.0208 < 0.05$**，统计显著自然过优化回撤！）。在该自然子集上执行独立 50/20/30 单次划分（$P_{\text{test}}=845$）时，验证集门控 **`Hybrid-Fixed` 自动选中 `Pooled-KL-LCB`**（而非 `Standard-BoN`），在 $N=64$ 留出测试集上取得 **`0.4559`**（高于回撤后的 `Standard-BoN` `0.4504` **`+0.55 pp`**，基本恢复 $N=16$ 峰值水平 `0.4576`）。
-- 其余 5 个出现轻微经验回撤的自然子集（`gsm8k RM-A/B`、`math500 RM-B`、`minerva_math RM-B`、`olympiadbench RM-A`）回撤幅度均在 `0.05 ~ 0.16 pp` 之间（$p_t \in [0.40, 0.92]$，未达单子集统计显著），与 §6.3 中 `MATH-500 Llama-3.2-3B PRM-Last` 从 $N=32$ (`0.5437`) 回撤至 $N=256$ (`0.5365`, `-0.72 pp`) 共同表明：现代强开源 RM 在常规数学基准上的自然尾部倒挂幅度温和（约 `0.5–0.7 pp`），而在跨领域混池或极端尾部污染下才会引发大幅度退化。
+为排除事后筛选偏倚（post-hoc peak selection bias）与跨 14 组子集检验的多重比较假阳性风险，我们对公开基准 `AceMath-RewardBench` 全部 14 组未污染“子集 × 官方 RM”（`7 × 2`）执行全面多重检验与 50/50 独立样本分割复核：
+- **`AceMath / college_math / Official RM-B`（$P = 2{,}818$，探索性非单调候选案例）**：全集精确 `Standard-BoN` 在 $N=16$ 处出现局部峰值 `0.4640` 并回撤至 $N=64$ 的 `0.4579`（`-0.60 pp ± 0.26 pp`，未校正双侧配对 $t$ 检验 `p_raw = 0.0208`）；但经全部 14 组同步多重比较校正后，**Bonferroni / Holm 校正后均不显著（$p_{\mathrm{Bonf},14} = p_{\mathrm{Holm},14} = 0.2908 > 0.05$）**。在无峰值选择偏倚的 50/50 独立样本分割验证中（$P_{\mathrm{sel}}=1{,}409, P_{\mathrm{conf}}=1{,}409$），选择半集定峰 $N=16$ 后在确认半集录得 `-1.08 pp ± 0.38 pp`（$p_{\mathrm{conf}} = 0.0048$）；而在 50/20/30 留出测试切分（$P_{\mathrm{test}}=845$）上 `Hybrid-Fixed` 相对 `Standard-BoN` 差异为 `+0.55 pp`（$p_t = 0.1810$，无显著性）。因此本论文将该案例严格定位为**需后续独立样本进一步确证的探索性非单调候选案例（exploratory candidate）**。
+- 其余 5 个出现轻微经验回撤的自然子集（`gsm8k RM-A/B`、`math500 RM-B`、`minerva_math RM-B`、`olympiadbench RM-A`）回撤幅度均在 `0.05 ~ 0.16 pp` 之间（未校正 $p_t \in [0.40, 0.92]$），与 §6.3 中 `MATH-500 Llama-3.2-3B PRM-Last` 从 $N=32$ (`0.5437`) 回撤至 $N=256$ (`0.5365`, `-0.72 pp`) 共同说明：现代强开源 RM 在常规数学基准上的自然尾部倒挂幅度温和，而在跨领域混池或分布漂移/尾部污染下才会引发大幅度退化。
 
 ---
 
 ## 15. 复现说明
 
-全量单元测试覆盖全部 12 个测试文件（共 **73 项**离线测试，包含 `test_v5_rigor.py` 9 项、`test_v6_theory.py` 6 项、`test_v7_counterexamples.py` 5 项、`test_v8_rigor.py` 7 项、`test_v9_consolidation.py` 6 项、`test_v10_release.py` 6 项及 `test_stage2_real_eval.py` 4 项），正式英文 LaTeX 论文位于 `paper/main.tex`（配 `paper/references.bib`），一键验证指令见 [README.md](../README.md)。
+全量单元测试覆盖全部 12 个测试文件（共 **76 项**离线测试，包含 `test_v5_rigor.py` 9 项、`test_v6_theory.py` 6 项、`test_v7_counterexamples.py` 5 项、`test_v8_rigor.py` 7 项、`test_v9_consolidation.py` 6 项、`test_v10_release.py` 9 项及 `test_stage2_real_eval.py` 4 项），正式英文 LaTeX 论文位于 `paper/main.tex`（基于 NeurIPS 2026 官方样式 `paper/neurips_2026.sty` 配 `paper/references.bib` 并经本地 Tectonic 编译生成 `paper/main.pdf`），一键验证指令见 [README.md](../README.md)。
 
 
 
