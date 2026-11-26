@@ -1,6 +1,7 @@
 # 测试时计算缩放的联合校准—算力极限：Minimax 理论与裁判选择 (`tts-theory`)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24563479.svg)](https://doi.org/10.5281/zenodo.24563479)
+[![Preprint DOI](https://img.shields.io/badge/Preprint_DOI-10.5281%2Fzenodo.24563692-007ec6.svg)](https://doi.org/10.5281/zenodo.24563692)
+[![Code DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24563479.svg)](https://doi.org/10.5281/zenodo.24563479)
 [![ORCID](https://img.shields.io/badge/ORCID-0009--0007--5524--7050-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0007-5524-7050)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -152,7 +153,10 @@ python scripts/audit_paper_artifacts.py
 
 ## 5. 引用方式（Citation）
 
-如果您在研究或工程中使用本项目的理论推导、实验脚本或开源工具，欢迎通过以下 BibTeX（亦见仓库根目录 [CITATION.cff](CITATION.cff)）引用本工作：
+如果您在研究或工程中使用本工作的理论推导或开源复现库，推荐按以下方式引用（另见 [CITATION.cff](CITATION.cff)）：
+
+- **论文预印本（Zenodo Preprint PDF）**：[`10.5281/zenodo.24563692`](https://doi.org/10.5281/zenodo.24563692)
+- **开源代码与测试套件归档（GitHub Release v1.0.0）**：[`10.5281/zenodo.24563479`](https://doi.org/10.5281/zenodo.24563479)
 
 ```bibtex
 @misc{zhang2026tts,
@@ -161,7 +165,8 @@ python scripts/audit_paper_artifacts.py
   year         = {2026},
   version      = {v1.0.0},
   publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.24563479},
-  url          = {https://doi.org/10.5281/zenodo.24563479}
+  doi          = {10.5281/zenodo.24563692},
+  url          = {https://doi.org/10.5281/zenodo.24563692},
+  note         = {Code and reproducibility archive DOI: 10.5281/zenodo.24563479}
 }
 ```
