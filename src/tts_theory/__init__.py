@@ -53,9 +53,14 @@ from tts_theory.real_eval import (
     diagnose_real_verifier_distribution,
     evaluate_discrete_algorithms_on_real_pools,
     evaluate_finite_calibration_on_real_pools,
+    evaluate_heterogeneous_multi_rm_on_real_pools,
+    evaluate_joint_m_n_calibration_on_real_pools,
+    evaluate_real_prompt_heterogeneity,
     exact_pool_bon_accuracy,
     extract_boxed_answer,
+    fit_and_predict_sota_calibrator,
     is_math_answer_correct,
+    is_math_answer_correct_any,
     normalize_math_answer,
 )
 from tts_theory.simulator import (
@@ -143,15 +148,20 @@ __all__ = [
     "diagnose_simpson_confounding",
     "diagnose_within_prompt_residual",
     "evaluate_pooled_vs_within_prompt_calibration",
-    # V3 真实大模型候选池与开源 RM 评估接口
+    # V3/Stage2 真实大模型候选池与开源 RM 评估接口
     "extract_boxed_answer",
     "normalize_math_answer",
     "is_math_answer_correct",
+    "is_math_answer_correct_any",
     "exact_pool_bon_accuracy",
     "diagnose_real_verifier_distribution",
     "diagnose_multi_verifier_correlations",
     "evaluate_finite_calibration_on_real_pools",
     "evaluate_discrete_algorithms_on_real_pools",
+    "fit_and_predict_sota_calibrator",
+    "evaluate_heterogeneous_multi_rm_on_real_pools",
+    "evaluate_joint_m_n_calibration_on_real_pools",
+    "evaluate_real_prompt_heterogeneity",
 ]
 
 __version__ = "0.5.0"

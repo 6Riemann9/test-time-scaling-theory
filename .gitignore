@@ -6,3 +6,4 @@ __pycache__/
 RESUME_BULLETS.md
 .DS_Store
 Thumbs.db
+.venv/

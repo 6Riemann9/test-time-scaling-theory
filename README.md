@@ -8,7 +8,7 @@
 >   - **定理 5（一般异构多裁判集成相变与 Copula 统一重尾理论）**：推导一般非对称协方差矩阵 $(\Sigma_1, \Sigma_0)$ 下的广义特征值最优线性融合（含高错相关下**负权差值共模抑制**）、基于 Hashorva-Hüsler 正交象限 QP 的严格密度级 `Min-Ensemble` 激活集相变（精确常数 $C_c^{\text{pdf}} = \gamma_c C_c^{\text{sf}}$），以及**任意正定相关矩阵 Gaussian-Copula + Student-$t$** 统一剩余尾相依系数（一般正定 $\eta_c \in (0, 1]$ 含负相关超独立加速；非负相关经 Slepian 引理限定于 $[1/K, 1]$）；
 >   - **定理 6（有限校准集 $M$ 与有限推理算力 $N$ 联合 Minimax 定理）**：导出含平局组精确条件闭式解，证得 $\beta$-光滑峰最适分桶律 $K^*(M) \asymp (M/\ln M)^{\frac{1}{2\beta+1}}$（二次峰为 **`1/5`**）；严格重述非渐近 **`KL-LCB`** 为**基于三事件并界的安全底线悲观封杀与高概率遗憾界**（取代“全桶完美排序”过强宣称）；建立全局唯一分离峰下的 $\Theta(N^{-\beta})$ 速率、含 $\delta = M^{-1}$ 失败项联合上界，并证明**全策略空间 $(M, N)$ 联合信息论 Minimax 下界** $\Omega\big((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta}\big)$；
 >   - **定理 7（题目异质性、辛普森伪单调遮蔽与题内标准化交叉权衡）**：分解全局池化后验导数恒等式揭示假单调遮蔽陷阱；严格刻画 $N=2$ 时 Z-Score 退化为三类**纯秩规则天花板** $\max(P_{\text{Raw}}(2), 2\bar{p}-P_{\text{Raw}}(2), \bar{p})$ 以及异质先验 $p(X)$ 诱导的混合矩残差边界；
-> - **V3 文献排雷审计与真实大模型/RM 实证验证**：系统对比 12 篇截至 2026-11 的 arXiv / 顶会核心文献（[RELATED_WORK.md](RELATED_WORK.md)），并在 `nvidia/AceMath-RewardBench`（8,987 题 × 64 候选 = 575,168 条双 RM 打分）与 `HuggingFaceH4/MATH-500`（`Llama-3.2-1B` / `3B` × 256 候选 = 256,000 条 `RLHFlow-8B-PRM` 轨迹）上完成端到端真实数据验证。
+> - **V3 / Stage 2 文献排雷审计与跨领域真实大模型/RM 大池实证**：系统对比 12 篇截至 2026-11 的 arXiv / 顶会核心文献（[RELATED_WORK.md](RELATED_WORK.md)），并在 V3（`AceMath-RewardBench` 575k、`MATH-500` `Llama-3.2-1B/3B` + `RLHFlow-8B-PRM` 256k）与 Stage 2（`RewardBench-1/2`、`OlympiadBench` `Qwen2.5-7B` × `uPRM-70B/32B`、`strategic-ttc-data` `GPQA/GSM8K/AIME`、`AceMath` 7 子域，累计 1.10M+ 候选与 2.40M+ 条 RM/PRM 评分）上完成跨家族多 RM、8 类 SOTA 校准器、二维 $(M,N)$ 联合标度及真实跨域辛普森悖论实证闭环。
 
 ---
 
@@ -43,7 +43,7 @@ test-time-scaling-theory/
 │   ├── ensemble_theory.py                     # V2/V4/V5 定理 5 一般 QP (含 C_pdf=gamma*C_sf) / Copula 重尾
 │   ├── calibration_theory.py                  # V2/V4/V5 定理 6 条件公式、KL-LCB 悲观保底与联合 Minimax
 │   ├── heterogeneity_theory.py                # V4/V5 定理 7 辛普森遮蔽、纯秩天花板与先验残差诊断
-│   ├── real_eval.py                           # V3 真实大模型/RM 离线精确池计算与 LaTeX/SymPy 判分引擎
+│   ├── real_eval.py                           # V3/Stage 2 真实大模型/RM 离线池评估、SOTA 校准与 LaTeX/SymPy 判分引擎
 │   ├── integrals.py                           # 双精度 PIT 分段 Gauss-Legendre / quad 引擎
 │   ├── simulator.py                           # 低内存流式分块向量化蒙特卡洛仿真器
 │   └── algorithms.py                          # StandardBoN, OptimalNStarBoN, EmpiricalScoreCalibrator
@@ -53,6 +53,7 @@ test-time-scaling-theory/
 │   ├── test_algorithms.py                     # 四大算法与经验校准器单元测试
 │   ├── test_extensions.py                     # V2 定理 5 & 定理 6 单元测试
 │   ├── test_real_eval.py                      # V3 真实池评估与等价判分单元测试
+│   ├── test_stage2_real_eval.py               # Stage 2 异构多 RM / 8-SOTA / 辛普森异质性 API 单元测试
 │   ├── test_v4_theory.py                      # V4 定理 5–7 推广、Fano 1/5、KL-LCB、N^{-2} 与辛普森单测
 │   └── test_v5_rigor.py                       # V5 审稿修补全部 9 项数学缺陷专项验证单测
 ├── scripts/
@@ -63,11 +64,14 @@ test-time-scaling-theory/
 │   ├── plot_v2_figures.py                     # V2 图 4–5 绘图 -> results/figures/*.png
 │   ├── run_real_llm_experiments.py            # V3 真实大模型/RM 实验 R1–R4 -> results/real_llm_results.json
 │   ├── plot_real_figures.py                   # V3 图 6–7 绘图 -> results/figures/*.png
+│   ├── run_stage2_experiments.py              # Stage 2 跨领域大池实证 S1–S4 -> results/stage2_real_results.json
+│   ├── plot_stage2_figures.py                 # Stage 2 图 8–10 绘图 -> results/figures/*.png
 │   └── verify_v4_theory.py                    # V4 定理 5–7 定量交叉验证 -> results/v4_theory_verification.json
 └── results/
-    ├── EXPERIMENT_REPORT.md                   # V1–V5 完整实验与审稿修补验证分析报告
+    ├── EXPERIMENT_REPORT.md                   # V1–V5 及 Stage 2 完整实验与审稿修补验证分析报告
     ├── theorem_verification.json / experiment_results.json
     ├── v2_extension_results.json / real_llm_results.json / v4_theory_verification.json
+    ├── stage2_real_results.json / stage2_summary.csv
     ├── param_sweep_summary.csv / algorithm_comparison_summary.csv
     └── figures/
         ├── scaling_collapse_curves.png        # 图 1：异方差与污染尾部下的 BoN 坍塌曲线
@@ -76,14 +80,17 @@ test-time-scaling-theory/
         ├── ensemble_phase_reversal.png        # 图 4：多裁判相变逆转与重尾 Mean/Min 分离
         ├── finite_calibration_secondary_collapse.png # 图 5：有限校准二次坍塌与 LCB 收敛标度
         ├── real_llm_theorem6_calibration.png  # 图 6：AceMath-RewardBench 真实 RM 校准验证
-        └── real_llm_math500_scaling.png       # 图 7：MATH-500 (Llama-3.2-1B/3B + RLHFlow-8B-PRM) 实证
+        ├── real_llm_math500_scaling.png       # 图 7：MATH-500 (Llama-3.2-1B/3B + RLHFlow-8B-PRM) 实证
+        ├── stage2_heterogeneous_multi_rm.png  # 图 8：Stage 2 异构多 RM 相关性破局、噪声免疫与 70B PRM 增益
+        ├── stage2_joint_mn_and_sota_calibrators.png # 图 9：Stage 2 8 类 SOTA 校准器横评与二维 (M, N) 联合标度
+        └── stage2_real_simpson_and_cross_domain.png # 图 10：Stage 2 真实跨域辛普森悖论逆转与 Hybrid 自适应边界
 ```
 
 ---
 
 ## 3. 快速安装与一键复现
 
-本核心理论库仅依赖 `numpy`, `scipy`, `matplotlib`, `pytest`；若复现 V3 真实 Parquet 数据集实验，可安装可选依赖组 `[real]`（`pandas`, `pyarrow`, `sympy`，数据自动缓存于 `.gitignore` 忽略的 `data/` 目录）：
+本核心理论库仅依赖 `numpy`, `scipy`, `matplotlib`, `pytest`；若复现 V3 / Stage 2 真实 Parquet 与 HuggingFace 大池实验，可安装可选依赖组 `[real]`（`pandas`, `pyarrow`, `sympy`, `huggingface_hub`, `requests`，数据自动缓存于 `.gitignore` 忽略的 `data/` 目录）：
 
 ```bash
 # 1. 克隆并离线可编辑安装
@@ -91,7 +98,7 @@ git clone https://github.com/6Riemann9/test-time-scaling-theory.git
 cd test-time-scaling-theory
 python -m pip install --no-deps --no-build-isolation -e .
 
-# 2. 运行全量单元测试（V1–V5 共 39 项）
+# 2. 运行全量单元测试（V1–V5 + Stage 2 共 43 项）
 python -m pytest -v
 
 # 3. 运行 V1–V4 实验验证与绘图脚本
@@ -105,6 +112,10 @@ python scripts/verify_v4_theory.py
 # 4. 运行 V3 真实大模型/RM 实证实验（首次运行将自动从 HuggingFace 缓存约 140MB 数据至 data/）
 python scripts/run_real_llm_experiments.py
 python scripts/plot_real_figures.py
+
+# 5. 运行 Stage 2 跨领域大池与异构多 RM 实证实验（RewardBench-1/2, OlympiadBench, strategic-ttc, AceMath）
+python scripts/run_stage2_experiments.py --stages all
+python scripts/plot_stage2_figures.py
 ```
 
 ---
@@ -127,6 +138,10 @@ python scripts/plot_real_figures.py
   - [RELATED_WORK.md](RELATED_WORK.md) 核验 12 篇 2022–2026 arXiv/顶会文献，精准划定 V1 统一重构与 V2/V4 原创定理边界；
   - `AceMath-RewardBench`（8,987 题 × 64 候选 = 575,168 条双 RM 打分）：`RM-B` 在 `college_math` 上因右尾后验倒挂从 $N=16$ (`46.40%`) 坍塌至 $N=64$ (`45.79%`)；在 4,494 题 holdout 上于 $M=200, N=64$ 用 `Optimal K*(M)=9 + Wilson-LCB`（`69.55%`）挽回过细 `Fixed K=60 + MLE` 退化（`66.01%`, **`+3.53%`**）；
   - `HuggingFaceH4/MATH-500`（`Llama-3.2-1B/3B` × 256 候选 = 256,000 条 `RLHFlow-8B-PRM` 轨迹）：4 类 PRM 视图因高错例相关（$\bar{\rho}_0 \approx 0.617\text{--}0.644$）均触发定理 5A `irreversible_collapse`；5-Fold CV 下 `Calibrated-Weighted-BoN (Wilson-LCB)` 在 $N=256$ 将 Pass@1 从 `Standard-BoN` 的 `42.08% / 53.52%` 大幅提升至 **`52.80% / 65.20%`**（**`+10.72% / +11.68%`**）。
+- **Stage 2 跨领域大池、异构多 RM 与 7B–72B 实证（5 大公开数据集 S1–S4，累计 1.10M+ 候选与 2.40M+ 条 RM/PRM 评分）**：
+  - **异构多 RM 相关性破局与融合边界（S1a `RewardBench-2`, S1b `RewardBench-1`, S2 `OlympiadBench`）**：同源 `AllenAI 4-RM` / `AceMath 双 RM` 错相关极高（$\bar{\rho}_0=0.909 / 0.886, \eta_0=0.928 / 0.943$）；切换到 6 家族异构 RM 将 `RewardBench-2` $\bar{\rho}_0$ 降至 `0.636`（`Ties` `0.407`）、`RewardBench-1` 全集降至 `0.332`（`Math` `0.238`）、跨规模 `uPRM-70B vs 32B` PRM 降至 `0.222`。`GenEig-OptLinear` 因忽略有限样本 SNR 易过拟合低噪弱模型，而有监督 **`Logit-Stack`** 在 `RB1 Code (5-RM)` 达 **`97.97%`**（超过最强单 RM `+1.43 pp`）、`RB1 All+DeBERTa` 达 **`95.38%`**（完全免疫弱模型注入对 `Min-Ensemble` 的 `-6.42 pp` 拖累）、`OlympiadBench Cross-4` 达 **`44.36%`**（`+2.82 pp` vs `70B-Last`）；在 `OlympiadBench` $N=128$ 下 `Calibrated-Weighted-BoN (Wilson-LCB)` 达 **`47.33%`**（击败 `Majority-Voting` `45.14%` 与 `Standard-BoN` `41.54%`）。
+  - **8 类 SOTA 校准器与二维 $(M, N)$ 联合标度（S3 `GPQA-Qwen7B`, S4 `AceMath`）**：`Empirical-Bernstein LCB` 在中/小样本显著坍塌（`AceMath M=400` 仅 `60.32%` vs `KL-LCB 69.62%`；`GPQA M=300` 跌回 `21.64%`）；定理 6 **`Opt 1/5 + KL-LCB`** 于 `AceMath M=100, N=64` 以 **`69.21%`** 击败过细 `Fixed-60 + MLE`（`63.82%`）达 **`+5.38 pp`**。
+  - **真实跨域辛普森悖论与双向自适应（S3 `GSM8K+GPQA+AIME` & S4 `AceMath` 7 子域）**：三域混合中 `AIME`（先验 `2.15%`）均分（`0.2672`）高于 `GSM8K`（先验 `90.73%`, 均分 `0.1643`），形成 `affine_shift_var=3.4396` 倒 U 型全局后验，令 `Pooled-KL-LCB` 坍塌至 `48.64%`，`Within-Prompt-Z` 与 `Hybrid-Adaptive` 挽回至 **`49.86%`**（`+1.22 pp`）；在低偏移多子域 `AceMath`（`0.1335`）与 `OlympiadBench`（`0.0216`）中，`Hybrid-Adaptive` 自动锁定 `Pooled-KL-LCB` 分支，彻底避免盲目 `Within-Z` 造成的 `-2.38 pp / -7.89 pp` 信息损失。
 
 ### 4.2 核心图表
 
@@ -150,3 +165,12 @@ python scripts/plot_real_figures.py
 
 #### (7) V3 真实验证：`MATH-500` (`Llama-3.2-1B / 3B` + `RLHFlow-8B-PRM`) 算法对比与多 PRM 相关性诊断
 ![Real LLM MATH-500 Scaling](results/figures/real_llm_math500_scaling.png)
+
+#### (8) Stage 2 真实验证：异构多 RM 相关性破局、噪声免疫与 `OlympiadBench` PRM 校准增益
+![Stage 2 Heterogeneous Multi-RM](results/figures/stage2_heterogeneous_multi_rm.png)
+
+#### (9) Stage 2 真实验证：8 类 SOTA 校准器横评与二维 $(M, N)$ 联合标度前沿
+![Stage 2 Joint M-N and SOTA Calibrators](results/figures/stage2_joint_mn_and_sota_calibrators.png)
+
+#### (10) Stage 2 真实验证：真实跨域辛普森悖论逆转与 `Hybrid-Adaptive` 双向安全切换边界
+![Stage 2 Real Simpson and Cross-Domain Heterogeneity](results/figures/stage2_real_simpson_and_cross_domain.png)

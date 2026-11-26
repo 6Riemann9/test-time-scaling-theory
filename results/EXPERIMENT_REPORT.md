@@ -291,9 +291,56 @@
 
 ---
 
-## 9. 结论与复现说明
+## 9. Stage 2 跨领域大池、异构多 RM 与 7B–72B 实证验证（实验 S1–S4）
 
-本实验套件全面验证了 [PROOF.md](../PROOF.md)（V5）中的预备基础重构与三大原创核心支柱及真实大模型实证：
+在 V1–V5 与 V3 单域实证之上，Stage 2 基于 `scripts/run_stage2_experiments.py` 与 `scripts/plot_stage2_figures.py` 在 **5 个公开 HuggingFace 大规模真实评分基准**（累计 **1.10M+ 候选轨迹与 2.40M+ 条 RM/PRM 评分**）上系统检验了第二部分三大原创支柱（定理 5–7）在真实大模型与多家族 Reward Model 上的适用边界、失效机理与可复现增益，完整数据导出至 `stage2_real_results.json` 与 `stage2_summary.csv`。
+
+| 实验编号 | 公开数据集 | 覆盖规模 | 检验核心理论 |
+| :---: | :--- | :--- | :--- |
+| **S1a** | `allenai/reward-bench-2-results` | `1,855–1,865` 题（`N=4`，含 `102` 题 `Ties` `N=11`），对比同源 4-RM 与 6-家族异构 RM（`8B–72B` + `DeBERTa`） | 定理 5A/5B（相关破局、`Logit-Stack` vs `GenEig`、弱模型污染）与定理 7 |
+| **S1b** | `allenai/reward-bench-results` | `2,985` 对齐偏好对（`Code=984`, `Math=447`, `Safety=740`, `Chat/Hard`），强/弱异构 RM 与 `DeBERTa` | 定理 5A/5B/5C（跨能力域与噪声污染下 `Min` / `Mean` / `Logit-Stack` 分离） |
+| **S2** | `OlympiadBench` (`Qwen2.5-7B` × `uPRM-70B / 32B`) | `674` 题 × `128` 候选 = `86,272` 条竞赛级 PRM 轨迹（双模型 × 4 视图：`Last/Min/Mean/Prod`） | 定理 4/5 跨规模 PRM 相关性退相干 + 大 $N=128$ 离散校准增益 |
+| **S3** | `Human-Centric-Machine-Learning/strategic-ttc-data` | `GPQA-Qwen7B/Llama8B`（`546×128`）、`GSM8K`（`1319×128`）、`AIME`（`933×128`），跨 3 域共 `2,798` 题 × `128` = `358,144` 条（`ArmoRM-8B`） | 定理 6（8 种 SOTA 校准器、$(M, N)$ 二维网格）与定理 7（真实跨域辛普森悖论逆转） |
+| **S4** | `nvidia/AceMath-RewardBench` | `8,987` 题 × `64` 候选 = `575,168` 条（`RM-A/B` 7 数学子域） | 定理 5 双同源 RM 诊断、定理 6 二维 $(M,N)$ 交叉、定理 7 `Hybrid` 跨子域防护 |
+
+### 9.1 实验 S1a & S1b：异构多 RM 相关性破局、跨家族融合边界与抗噪声污染（定理 5）
+
+5-Fold 严格题级交叉验证表明，真实大模型评分器族系结构直接决定定理 5 预测的相关系数位置：
+1. **同源 RM 极高错相关证实**：在 `RewardBench-2` 同源 `AllenAI` 4-RM（`AllenAI-8B/70B-RM`, `Tulu3-8B-DPO/RL`）上，错例相关性 $\bar{\rho}_0 = 0.909$、Copula null 相关 $\eta_0 = 0.928$，处于 `irreversible_collapse` 区间；在 `AceMath` 同源双 RM（`RM-A/B`）上同样测得 $\bar{\rho}_1 = 0.844,\ \bar{\rho}_0 = 0.886,\ \eta_0 = 0.943$（`RM-A=73.21%`, `RM-B=69.50%`, `Logit-Stack=72.98%`）。
+2. **跨家族异构多 RM 大幅压低相关性**：切换到 6 家族异构 RM（`Skywork-V2-Llama3.1-8B`, `WorldPM-72B`, `InternLM2-20B`, `Starling-34B`, `GRM-Gemma2-2B`, `Mistral-RAFT-7B`）后，`All` 上 $\bar{\rho}_0$ 降至 `0.636`（$\eta_0=0.644$），多候选 `Ties`（$N=11$）进一步降至 $\bar{\rho}_0 = 0.407$（$\eta_0=0.438$）；`RewardBench-1` 强异构 5-RM 全集（`all_5strong`）测得 $\bar{\rho}_1=0.405, \bar{\rho}_0=0.332, \eta_0=0.417$（$\kappa_{\text{eff}}=0.953 < 1$），数学子集 `math_prm_5strong` 达 $\bar{\rho}_0=0.238$（$\eta_0=0.352$）。
+3. **`GenEig-OptLinear` 有限样本 SNR 盲区与有监督 `Logit-Stack` 鲁棒胜出**：理论无约束广义特征值求解器 `GenEig-OptLinear` 仅最小化渐近方差比 $\mathbf{w}^\top \Sigma_0 \mathbf{w} / (\mathbf{w}^\top \Sigma_1 \mathbf{w})$ 而未约束有限 $N$ 信噪比 $\mathbf{w}^\top (\mu_1-\mu_0)$，在真实强弱混杂池中容易把高正/负权压向低方差弱裁判（如 RB2 上退化至 `45.14%`、AceMath 上 `57.59%`、RB1 Math 上 `57.05%`）；相反，联合建模均值差与协方差逆的交叉验证 `Logit-Stack` 在各异构池上表现极其稳健——在 `RB1 Code (5-RM)` 上达 **`97.97%`**（超越最强单 RM `InternLM2-20B` `96.54%` 达 `+1.43 pp`），在 `RB2 Ties` 达 `82.96%`（略超 `Skywork-V2` `82.44%`），在 `RB2 Hetero-6` 达 `86.06%`。
+4. **弱噪声模型注入对 `Min-Ensemble` 的脆弱性打击与防线**：向异构 5-RM / 6-RM 注入弱模型 `DeBERTa-v3-Large`（RB1 `59.53%`，RB2 `35.35%`）后，未保护的 `Min-Ensemble` 遭到高错概率拖累暴跌（`RB1 All`: `86.87% -> 80.45%`、`RB2 All`: `72.05% -> 68.17%`），`Calibrated-Min (KL-LCB)` 对单调失准略有缓释（RB2 `74.03%` vs `68.17%`），而 `Logit-Stack` 通过自动赋近零/负权完整免疫污染（`RB1 All+DeBERTa` 反升至 **`95.38%`**，超过最强单 RM `95.06%`）。
+
+### 9.2 实验 S2：跨规模 70B vs 32B PRM 相关性退相干与竞赛数学校准实证（OlympiadBench, $N \le 128$）
+
+在竞赛级 `OlympiadBench`（$P=674$，$128$ 候选/题）上同时考察跨模型尺寸（`uPRM-70B` vs `uPRM-32B`）与同模型多聚合视图（`Last/Min/Mean/Prod`）：
+- **跨规模显著降相关**：同一 `uPRM-70B` 的 4 种步骤聚合视图高度相关（$\bar{\rho}_1=0.711, \bar{\rho}_0=0.683, \eta_0=0.734$），而跨规模双模型 `70B-Last` vs `32B-Last` 将 $(\bar{\rho}_1, \bar{\rho}_0)$ 大幅压低至 **`(0.163, 0.222)`**（跨规模 4 视图均值 `(0.325, 0.333)`）；四视图混合下 `Logit-Stack` 于 $N=128$ 达到 **`44.36%`**（领先 `70B-Last` `41.54%` 达 **`+2.82 pp`**，领先 `70B-Min` `43.47%` 达 `+0.89 pp`）。同时在双模型 `70B vs 32B` 上 `GenEig-OptLinear` 同样因忽略 SNR 给出负权 `w*=[-0.215, 0.977]` 并退化至 `21.07%`。
+- **单模型长尾诊断与离散校准收益**：`uPRM-70B-Last` 与 `32B-Last` 均未观测到右尾反转（`99%-100%` 顶分位真实后验分别达 `0.9247` 与 `0.8737`，`tail_turn_down=False`），但在 $N=128$ 严格 5-Fold CV 下，`Calibrated-Weighted-BoN (Wilson-LCB)` 借助“先校准后按等价数学答案累加期望正确数”依然取得 **`47.33%`**，显著击败 `Majority-Voting`（`45.14%`, **`+2.19 pp`**）与 `Standard-BoN`（`41.54%`, **`+5.79 pp`**）。
+
+![Stage 2 Heterogeneous Multi-RM](figures/stage2_heterogeneous_multi_rm.png)
+
+### 9.3 实验 S3a & S4a：8 类 SOTA 校准器全量横评与二维 $(M, N)$ 联合标度律（定理 6）
+
+在 `AceMath`（$N=64, M=400, K=20$）与 `GPQA-Qwen7B`（$N=128, M=300, K=16$）上横向对比 8 种主流校准器（`Standard-BoN`, `Platt Scaling`, `Isotonic PAVA`, `Histogram-MLE`, `Laplace-Smoothed`, `Empirical-Bernstein LCB`, `Wilson-LCB`, `KL-LCB`），并在二维 $(M, N)$ 网格验证定理 6 的联合标度率：
+1. **小/中样本 $M$ 下 `Empirical-Bernstein LCB` 坍塌实证**：因方差加倍惩罚项过保守，在真实有限校准集上 `Empirical-Bernstein LCB` 严重拖垮高分桶优势——`AceMath`（$M=400$）仅为 **`60.32%`**（比 `KL-LCB` `69.62%` 低 **`-9.30 pp`**）；`GPQA-7B`（$M=300$）退化至 **`21.64%`**（与 `N=1` 先验持平，显著低于 `KL-LCB` `28.99%`、`Wilson-LCB` `29.79%` 与 `Isotonic PAVA` `31.38%`）。
+2. **`Opt K* ∝ (M / ln M)^{1/5} + KL-LCB` 在低样本区间击败过细分桶 MLE**：在 `AceMath RM-B` 于 $M=100, N=64$ 下，过细固定分桶 `Fixed K=60 + MLE` 因高估小样本空/少样本高分桶噪点跌至 `63.82%`，而定理 6 `Opt 1/5 + KL-LCB` 稳定保持在 **`69.21%`**（**`+5.38 pp`**；跨 $N=2..64$ 全线领先 `+4.14..+5.38 pp`）；在 $M=200 / 400$ 时仍领先 `+3.46 pp / +0.95 pp`。仅当 $M$ 增至 $40{,}000$ 极充裕样本域时，`Fixed-60 + MLE` 方才回暖至 `70.01%`（略超 `69.88%`），在 `GPQA-7B`（$M=100$ vs $M=12000$：`25.42% vs 24.89%` 反转至 `28.95% vs 32.31%`）上亦呈现一致的 $(M, N)$ 联合权衡前沿。
+
+![Stage 2 Joint M-N and SOTA Calibrators](figures/stage2_joint_mn_and_sota_calibrators.png)
+
+### 9.4 实验 S3b & S4b：真实跨域辛普森悖论复现与 `Hybrid-Adaptive` 交叉边界（定理 7）
+
+Stage 2 在真实推理域混合基准上直接观测到了定理 7 所预言的“跨题分数域错位触发池化失效”及其反向交叉权衡：
+- **跨领域真题混池触发真实反向辛普森坍塌（`S3 GSM8K+GPQA+AIME`, $P=2,798, 358,144$ 候选）**：难度极高、真实先验仅 `2.15%` 的竞赛域 `AIME` 反而获得了 `ArmoRM-8B` 最高的原始均值分数（`0.2672`），而先验达 `90.73%` 的基础算数域 `GSM8K` 均分仅 `0.1643`（`GPQA` `p=19.72%`, 均分 `0.0840`），形成 `affine_shift_var = 3.4396`、`prior_shift_var = 0.1717`。合并三域后的全球池化实证后验曲线呈现剧烈倒 U 型（低至中分升至 `0.918` 后一路暴跌回高分段的 `0.086–0.124`，类间混杂项 `between_confounding` 负至 `-0.4232`）。由此导致盲目池化的 `Pooled-KL-LCB` 在 $N=128$ 时被错杀高分段，准确率从 `Standard-BoN`（`51.12%`）滑落至 `48.64%`；而题内标准化 `Within-Prompt-Z-KL-LCB` 与 `Hybrid-Adaptive-KL-LCB` 均将准确率拉回 **`49.86%`**（挽回 **`+1.22 pp`**）。同样地，在 `RewardBench-2`（`affine_shift_var = 0.2742, prior_shift_var = 0.0`）上，`Within-Prompt-Z` 与 `Hybrid` 亦以 `86.31%` 优于 `Pooled-KL-LCB`（`85.16%`, `+1.15 pp`）。
+- **低跨题偏移 + 强先验/绝对分差域验证定理 7 反向边界（`S4 AceMath 7-Strata` & `S2 OlympiadBench`）**：相反地，当不同难度子题的原始绝对分仍携带大量跨题难度信息且仿射偏移方差较小时（`AceMath RM-B`: `affine_shift_var=0.1335, prior_shift_var=0.0310`；`RM-A`: `0.0971 / 0.0310`；`OlympiadBench`: `0.0216 / 0.0057`），盲目 `Within-Prompt-Z` 强行抹平题间绝对位置会导致信息丢失，分别在极限算力处比 `Pooled-KL-LCB` 下降 **`-2.38 pp`**（`67.11% vs 69.49%`）、**`-2.68 pp`**（`70.55% vs 73.23%`）与 **`-7.89 pp`**（`33.66% vs 41.55%`）。而跨折自适应判别器 `Hybrid-Adaptive-KL-LCB` 在上述三组低偏移场景均精准锁定 `Pooled-KL-LCB` 分支（零损失：`69.49% / 73.23% / 41.55%`），而在强偏移场景（`S3 3-Domain`, `S1a RB2`）自动切换至 `Within-Prompt-Z` 分支，完整印证定理 7 的双向安全决策机制。
+
+![Stage 2 Real Simpson and Cross-Domain Heterogeneity](figures/stage2_real_simpson_and_cross_domain.png)
+
+---
+
+## 10. 结论与复现说明
+
+本实验套件全面验证了 [PROOF.md](../PROOF.md)（V5）中的预备基础重构与三大原创核心支柱，并在 V3 与 Stage 2 共计 **7 组大型公开大模型/RM 真实数据基准** 上完成了端到端实证闭环：
 1. **理论严格性与数值精度**：V5 修复了审稿指出的全部 9 处数学细节与边界缺陷；高精度积分与多组 $10^5 \sim 1.5\times 10^6$ 次 MC 误差达到千分之一级；V4/V5 严格验证涵盖负权差值逆转、一般正定 Copula ($\eta_c \in (0, 1]$)、`KL-LCB` 悲观保底、Fano 联合 $(M, N)$ 上下界、以及题目异质性辛普森遮蔽与 $N=2$ 纯秩规则天花板。
-2. **文献排雷与真实大模型验证**：[RELATED_WORK.md](../RELATED_WORK.md) 系统核验了 12 篇 2022–2026 年代表性文献，明确划分第一部分预备重构与第二部分三大原创理论边界；在 `AceMath-RewardBench`（575k）与 `MATH-500`（`Llama-3.2-1B/3B` + `RLHFlow-8B-PRM`, 256k）上复现了异方差坍塌、小 $M$ 过细校准退化与同源 PRM 不可逆诊断，并验证 `Calibrated-Weighted-BoN (Wilson-LCB)` 取得 `+10.72% / +11.68%` 真实增益。
-3. **测试与复现**：覆盖 V1–V5 全部 39 项单元测试（含 `test_v5_rigor.py` 9 项专项严格性检验），一键复现命令参见项目根目录 [README.md](../README.md)。
+2. **文献排雷与跨阶段真实大模型验证**：[RELATED_WORK.md](../RELATED_WORK.md) 系统核验了 12 篇 2022–2026 年代表性文献，明确划定第一部分预备重构与第二部分三大原创理论边界；V3 在 `AceMath-RewardBench` 与 `MATH-500` 验证了异方差坍塌、小 $M$ 过细校准退化与同源 PRM 不可逆诊断，并验证 `Calibrated-Weighted-BoN (Wilson-LCB)` 取得 `+10.72% / +11.68%` 真实增益；Stage 2 进一步在 `RewardBench-1/2`、`OlympiadBench`（`uPRM-70B/32B`）、`strategic-ttc-data`（`GPQA/GSM8K/AIME`）与 `AceMath` 7 子域上证实了跨家族降相关边界、弱噪声 RM 对 `Min-Ensemble` 的破坏及 `Logit-Stack` 的抗污增益（最高 `97.97%`）、8-SOTA 校准器横评及 `Opt 1/5 + KL-LCB` 小样本增益（`+5.38 pp`）、以及真实跨域辛普森悖论与 `Hybrid-Adaptive` 双向安全切换（对应论文图 1–10）。
+3. **测试与复现**：覆盖 V1–V5 与 Stage 2 全部 43 项单元测试（含 `test_v5_rigor.py` 9 项严格性检验与 `test_stage2_real_eval.py` 4 项 Stage 2 真实池 API 单测），一键复现命令参见项目根目录 [README.md](../README.md)。
+

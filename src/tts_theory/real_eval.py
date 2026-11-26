@@ -13,10 +13,10 @@ from __future__ import annotations
 from fractions import Fraction
 import math
 import re
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
-from scipy import special, stats
+from scipy import optimize, special, stats
 
 from tts_theory.algorithms import (
     CalibratedWeightedBoN,
@@ -24,11 +24,20 @@ from tts_theory.algorithms import (
     MajorityVoting,
     StandardBoN,
     TwoStageVerifiedMajority,
+    _argmax_random_tie_2d,
 )
-from tts_theory.calibration_theory import compute_bin_calibrator_scores
+from tts_theory.calibration_theory import (
+    calibration_minimax_scaling,
+    compute_bin_calibrator_scores,
+    joint_calibration_compute_scaling,
+)
 from tts_theory.ensemble_theory import (
+    GeneralGaussianMultiVerifierSpec,
     MultiVerifierGaussianSpec,
     ensemble_phase_reversal_criterion,
+    general_min_ensemble_qp_criterion,
+    optimal_linear_ensemble_criterion,
+    solve_positive_quadrant_qp,
 )
 
 
@@ -726,13 +735,868 @@ def evaluate_discrete_algorithms_on_real_pools(
     }
 
 
+def is_math_answer_correct_any(pred: str, gold_list: Sequence[str] | str) -> bool:
+    """判断预测数学答案是否与标准答案列表中的任意一个等价（适配 OlympiadBench 等多解字段）。"""
+    if isinstance(gold_list, str):
+        return is_math_answer_correct(pred, gold_list)
+    for gold in gold_list:
+        if is_math_answer_correct(pred, str(gold)):
+            return True
+    return False
+
+
+_SOTA_BIN_METHOD_MAP = {
+    "histogram_mle": "mle",
+    "laplace_smoothed": "laplace",
+    "empirical_bernstein_lcb": "empirical_bernstein_lcb",
+    "wilson_lcb": "wilson_lcb",
+    "kl_lcb": "kl_lcb",
+}
+
+_SUPPORTED_SOTA_CALIBRATORS = (
+    "standard_bon",
+    "platt_scaling",
+    "isotonic_pava",
+    "histogram_mle",
+    "laplace_smoothed",
+    "empirical_bernstein_lcb",
+    "wilson_lcb",
+    "kl_lcb",
+)
+
+
+def _fit_logistic_1d(x: np.ndarray, y: np.ndarray, l2_reg: float = 1e-4) -> tuple[float, float, float, float]:
+    """纯 NumPy/SciPy 拟合一维带微小 L2 正则的 Platt Logistic 回归 y ~ sigma(a*z + b)。"""
+    mu = float(np.mean(x))
+    sd = max(1e-8, float(np.std(x)))
+    z = (x - mu) / sd
+
+    def _loss_and_grad(params: np.ndarray) -> tuple[float, np.ndarray]:
+        a, b = float(params[0]), float(params[1])
+        logits = a * z + b
+        # log(1 + exp(logits)) - y * logits 的数值稳定形式
+        loss_vec = np.logaddexp(0.0, logits) - y * logits
+        loss = float(np.mean(loss_vec) + 0.5 * l2_reg * (a * a + b * b))
+        p_hat = special.expit(logits)
+        diff = (p_hat - y) / float(z.size)
+        ga = float(np.dot(diff, z) + l2_reg * a)
+        gb = float(np.sum(diff) + l2_reg * b)
+        return loss, np.array([ga, gb], dtype=np.float64)
+
+    res = optimize.minimize(_loss_and_grad, np.array([1.0, 0.0]), jac=True, method="L-BFGS-B")
+    return float(res.x[0]), float(res.x[1]), mu, sd
+
+
+def _fit_logistic_multivariate(z_mat: np.ndarray, y: np.ndarray, l2_reg: float = 1e-3) -> np.ndarray:
+    """拟合多元 L2 正则化 Logistic 堆叠权重 w（不含截距仅用于排序）。"""
+    n_samples, k_dim = z_mat.shape
+
+    def _loss_and_grad(params: np.ndarray) -> tuple[float, np.ndarray]:
+        w = params[:-1]
+        b = float(params[-1])
+        logits = z_mat @ w + b
+        loss = float(np.mean(np.logaddexp(0.0, logits) - y * logits) + 0.5 * l2_reg * float(np.dot(w, w)))
+        diff = (special.expit(logits) - y) / float(n_samples)
+        gw = z_mat.T @ diff + l2_reg * w
+        gb = float(np.sum(diff))
+        return loss, np.concatenate([gw, [gb]])
+
+    init = np.zeros(k_dim + 1, dtype=np.float64)
+    init[:-1] = 1.0 / float(k_dim)
+    res = optimize.minimize(_loss_and_grad, init, jac=True, method="L-BFGS-B")
+    w_out = np.asarray(res.x[:-1], dtype=np.float64)
+    norm = float(np.linalg.norm(w_out))
+    return w_out / max(1e-12, norm)
+
+
+def _build_empirical_edges(scores: np.ndarray, n_bins: int, binning: str) -> np.ndarray:
+    """从校准分数构造严格递增的内部桶边界 inner_edges（长度 K_actual - 1）。"""
+    k_int = max(2, int(n_bins))
+    if binning == "quantile":
+        edges = np.quantile(scores, np.linspace(0.0, 1.0, k_int + 1))
+        edges = np.unique(edges)
+        if edges.size >= 3:
+            return edges[1:-1]
+        return np.array([float(np.median(scores))], dtype=np.float64)
+    if binning == "uniform":
+        lo_x, hi_x = np.quantile(scores, [5e-4, 1.0 - 5e-4])
+        if hi_x <= lo_x + 1e-12:
+            return np.array([float(lo_x)], dtype=np.float64)
+        if k_int == 2:
+            return np.array([0.5 * float(lo_x + hi_x)], dtype=np.float64)
+        return np.linspace(float(lo_x), float(hi_x), k_int - 1)
+    raise ValueError(f"binning 必须为 'quantile' 或 'uniform'，当前收到: {binning!r}")
+
+
+def _fit_sota_calibrator_predictor(
+    cal_scores: np.ndarray,
+    cal_correct: np.ndarray,
+    method: str = "kl_lcb",
+    n_bins: int | None = None,
+    n_budget: int = 64,
+    delta: float = 0.05,
+    prior_strength: float = 2.0,
+    binning: str = "quantile",
+) -> tuple[Callable[[np.ndarray], np.ndarray], dict[str, Any]]:
+    """拟合 8 类校准/选择映射器，返回向量化预测函数及元信息。"""
+    if method not in _SUPPORTED_SOTA_CALIBRATORS:
+        raise ValueError(f"不支持的校准方法 {method!r}，可选: {_SUPPORTED_SOTA_CALIBRATORS}")
+    c_s = np.asarray(cal_scores, dtype=np.float64).ravel()
+    c_y = np.asarray(cal_correct, dtype=np.float64).ravel()
+    if c_s.size == 0 or c_s.shape != c_y.shape:
+        raise ValueError("cal_scores 与 cal_correct 必须非空且长度一致")
+
+    if method == "standard_bon":
+        return (lambda x: np.asarray(x, dtype=np.float64)), {"method": method, "n_bins_actual": 0}
+
+    if method == "platt_scaling":
+        a, b, mu, sd = _fit_logistic_1d(c_s, c_y, l2_reg=1e-4)
+        return (
+            lambda x, _a=a, _b=b, _mu=mu, _sd=sd: special.expit(
+                _a * ((np.asarray(x, dtype=np.float64) - _mu) / _sd) + _b
+            )
+        ), {"method": method, "a": a, "b": b, "n_bins_actual": 0}
+
+    if method == "isotonic_pava":
+        iso = EmpiricalScoreCalibrator(method="isotonic").fit(c_s, c_y)
+        return (lambda x, _iso=iso: np.asarray(_iso.predict_proba(x), dtype=np.float64)), {
+            "method": method,
+            "n_knots": int(iso.knots_x_.size) if iso.knots_x_ is not None else 0,
+        }
+
+    # 直方图分桶系列（MLE / Laplace / Empirical-Bernstein / Wilson-LCB / KL-LCB）
+    if n_bins is None:
+        m_eff = max(10, int(c_s.size))
+        k_target = int(
+            joint_calibration_compute_scaling(
+                m_total=m_eff, n_budget=max(1, int(n_budget)), delta=delta
+            )["k_joint_star"]
+        )
+        k_target = max(2, min(k_target, max(2, c_s.size // 4)))
+    else:
+        k_target = max(2, int(n_bins))
+
+    inner_edges = _build_empirical_edges(c_s, k_target, binning=binning)
+    k_actual = int(inner_edges.size + 1)
+    b_idx = np.searchsorted(inner_edges, c_s, side="right")
+    counts = np.bincount(b_idx, minlength=k_actual).astype(np.float64)
+    positives = np.bincount(b_idx, weights=c_y, minlength=k_actual).astype(np.float64)
+    prior_p = float(np.clip(np.mean(c_y), 1e-6, 1.0 - 1e-6))
+
+    est = compute_bin_calibrator_scores(
+        counts,
+        positives,
+        method=_SOTA_BIN_METHOD_MAP[method],
+        prior_p=prior_p,
+        delta=delta,
+        prior_strength=prior_strength,
+    )
+    return (
+        lambda x, _edges=inner_edges, _est=est: _est[
+            np.searchsorted(_edges, np.asarray(x, dtype=np.float64), side="right")
+        ]
+    ), {"method": method, "n_bins_actual": k_actual, "inner_edges": inner_edges, "bin_scores": est}
+
+
+def fit_and_predict_sota_calibrator(
+    cal_scores: np.ndarray,
+    cal_correct: np.ndarray,
+    test_scores: np.ndarray,
+    method: str = "kl_lcb",
+    n_bins: int | None = None,
+    n_budget: int = 64,
+    delta: float = 0.05,
+    prior_strength: float = 2.0,
+    binning: str = "quantile",
+) -> np.ndarray:
+    """在离线校准集上拟合 8 类 SOTA 校准器之一，并预测测试分数上的校准得分。"""
+    pred_fn, _ = _fit_sota_calibrator_predictor(
+        cal_scores,
+        cal_correct,
+        method=method,
+        n_bins=n_bins,
+        n_budget=n_budget,
+        delta=delta,
+        prior_strength=prior_strength,
+        binning=binning,
+    )
+    return pred_fn(np.asarray(test_scores, dtype=np.float64))
+
+
+def _ensure_spd(mat: np.ndarray, min_eig: float = 1e-6) -> np.ndarray:
+    """对样本协方差或相关矩阵做对称化与最小特征值保护，确保 Cholesky/QP 数值正定。"""
+    sym = 0.5 * (mat + mat.T)
+    eigvals, eigvecs = np.linalg.eigh(sym)
+    if float(np.min(eigvals)) >= min_eig:
+        return sym
+    clipped = np.maximum(eigvals, min_eig)
+    fixed = (eigvecs * clipped[None, :]) @ eigvecs.T
+    return 0.5 * (fixed + fixed.T)
+
+
+def _eval_bon_variable_pools(
+    score_list: Sequence[np.ndarray],
+    correct_list: Sequence[np.ndarray],
+    n_values: Sequence[int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """在允许变长候选池（如 RB2 Ties 11-38 vs 普通 4 候选）上精确计算均值 BoN 曲线。"""
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    sums = np.zeros(n_arr.size, dtype=np.float64)
+    counts = np.zeros(n_arr.size, dtype=np.int64)
+    for sc, yc in zip(score_list, correct_list):
+        pool_len = int(sc.size)
+        valid_mask = n_arr <= pool_len
+        if not np.any(valid_mask):
+            continue
+        sub_n = n_arr[valid_mask]
+        sums[valid_mask] += exact_pool_bon_accuracy(sc, yc, sub_n)
+        counts[valid_mask] += 1
+    if np.any(counts == 0):
+        raise ValueError("存在没有任何题目满足 pool_size >= n 的预算值")
+    return sums / counts.astype(np.float64), counts
+
+
+def evaluate_heterogeneous_multi_rm_on_real_pools(
+    verifier_names: Sequence[str],
+    score_matrices: Sequence[np.ndarray],
+    correct_list: Sequence[np.ndarray],
+    n_values: Sequence[int],
+    n_folds: int = 5,
+    n_bins_cal: int = 20,
+    delta: float = 0.05,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """在真实多裁判评分矩阵上执行定理 5 诊断与严格 5-Fold 无泄露对比评估。
+
+    Args:
+        verifier_names: K 个 Verifier 名称列表。
+        score_matrices: P 道题的评分矩阵列表，每题形状为 (L_i, K)。
+        correct_list: P 道题的布尔正确性数组列表，每题形状为 (L_i,)。
+        n_values: 待评估的 Best-of-N 预算序列。
+    """
+    names = list(verifier_names)
+    k_ver = len(names)
+    n_probs = len(score_matrices)
+    if k_ver < 2 or n_probs == 0 or len(correct_list) != n_probs:
+        raise ValueError("需要至少 2 个 Verifier 且 score_matrices 与 correct_list 非空等长")
+
+    mats = [np.asarray(m, dtype=np.float64) for m in score_matrices]
+    ys = [np.asarray(y, dtype=bool).ravel() for y in correct_list]
+    for idx, (m, y) in enumerate(zip(mats, ys)):
+        if m.ndim != 2 or m.shape[1] != k_ver or m.shape[0] != y.size or m.shape[0] == 0:
+            raise ValueError(f"第 {idx} 题矩阵形状 {m.shape} 与标签长度 {y.size} 或裁判数 {k_ver} 不匹配")
+
+    # 1. 全量条件统计量与定理 5A/5B 理论判据诊断
+    all_mat = np.vstack(mats)
+    all_y = np.concatenate(ys)
+    z_all = (all_mat - np.mean(all_mat, axis=0, keepdims=True)) / np.maximum(
+        1e-8, np.std(all_mat, axis=0, keepdims=True)
+    )
+    pos_z = z_all[all_y]
+    neg_z = z_all[~all_y]
+
+    p_hat = float(np.clip(np.mean(all_y), 1e-4, 1.0 - 1e-4))
+    mu1_z = np.mean(pos_z, axis=0)
+    mu0_z = np.mean(neg_z, axis=0)
+    cov1_z = _ensure_spd(np.cov(pos_z, rowvar=False))
+    cov0_z = _ensure_spd(np.cov(neg_z, rowvar=False))
+
+    corr_pos = np.corrcoef(pos_z, rowvar=False)
+    corr_neg = np.corrcoef(neg_z, rowvar=False)
+    corr_pos_spd = _ensure_spd(corr_pos)
+    corr_neg_spd = _ensure_spd(corr_neg)
+    np.fill_diagonal(corr_pos_spd, 1.0)
+    np.fill_diagonal(corr_neg_spd, 1.0)
+
+    gen_spec = GeneralGaussianMultiVerifierSpec(p=p_hat, mu1=mu1_z, cov1=cov1_z, mu0=mu0_z, cov0=cov0_z)
+    opt_lin_diag = optimal_linear_ensemble_criterion(gen_spec)
+    min_qp_diag = general_min_ensemble_qp_criterion(gen_spec)
+    qp_r1 = solve_positive_quadrant_qp(corr_pos_spd)
+    qp_r0 = solve_positive_quadrant_qp(corr_neg_spd)
+    eta1 = 1.0 / float(qp_r1["gamma"])
+    eta0 = 1.0 / float(qp_r0["gamma"])
+
+    sym_diag = diagnose_multi_verifier_correlations(
+        {n: z_all[:, i] for i, n in enumerate(names)},
+        all_y,
+    )
+    per_diag = {
+        n: diagnose_real_verifier_distribution([m[:, i] for m in mats], ys)
+        for i, n in enumerate(names)
+    }
+
+    # 2. 严格按题 K-Fold 交叉验证（所有均值/方差/协方差/权重/校准表仅从训练折估计）
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    eff_folds = min(int(n_folds), n_probs)
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n_probs)
+    folds = np.array_split(perm, eff_folds)
+
+    ens_names = [
+        "Mean-Ensemble",
+        "Min-Ensemble",
+        "Nonneg-OptLinear",
+        "GenEig-OptLinear",
+        "Logit-Stack",
+        "Calibrated-Min (KL-LCB)",
+    ]
+    all_method_names = names + ens_names
+    per_problem_curves: dict[str, list[tuple[int, np.ndarray]]] = {m: [] for m in all_method_names}
+
+    for f_idx in range(eff_folds):
+        test_idx = folds[f_idx]
+        train_idx = np.concatenate([folds[j] for j in range(eff_folds) if j != f_idx])
+
+        tr_mat = np.vstack([mats[i] for i in train_idx])
+        tr_y = np.concatenate([ys[i] for i in train_idx])
+        tr_mu = np.mean(tr_mat, axis=0, keepdims=True)
+        tr_sd = np.maximum(1e-8, np.std(tr_mat, axis=0, keepdims=True))
+        tr_z = (tr_mat - tr_mu) / tr_sd
+
+        tr_pos = tr_z[tr_y]
+        tr_neg = tr_z[~tr_y]
+        tr_p = float(np.clip(np.mean(tr_y), 1e-4, 1.0 - 1e-4))
+        tr_spec = GeneralGaussianMultiVerifierSpec(
+            p=tr_p,
+            mu1=np.mean(tr_pos, axis=0),
+            cov1=_ensure_spd(np.cov(tr_pos, rowvar=False)),
+            mu0=np.mean(tr_neg, axis=0),
+            cov0=_ensure_spd(np.cov(tr_neg, rowvar=False)),
+        )
+        tr_opt = optimal_linear_ensemble_criterion(tr_spec)
+        w_star = np.asarray(tr_opt["w_star"], dtype=np.float64)
+        w_nonneg = np.asarray(tr_opt["w_nonneg_star"], dtype=np.float64)
+        w_logit = _fit_logistic_multivariate(tr_z, tr_y.astype(np.float64), l2_reg=1e-3)
+
+        # 为每个 Verifier 拟合单维 KL-LCB 映射（用于 Calibrated-Min）
+        k_cal = min(int(n_bins_cal), max(4, tr_z.shape[0] // 25))
+        cal_predictors = [
+            _fit_sota_calibrator_predictor(
+                tr_mat[:, col], tr_y.astype(np.float64), method="kl_lcb", n_bins=k_cal, delta=delta
+            )[0]
+            for col in range(k_ver)
+        ]
+
+        for p_idx in test_idx:
+            raw_p = mats[p_idx]
+            y_p = ys[p_idx]
+            pool_len = int(y_p.size)
+            valid_mask = n_arr <= pool_len
+            if not np.any(valid_mask):
+                continue
+            sub_n = n_arr[valid_mask]
+            z_p = (raw_p - tr_mu) / tr_sd
+
+            score_map: dict[str, np.ndarray] = {n: raw_p[:, c] for c, n in enumerate(names)}
+            score_map["Mean-Ensemble"] = np.mean(z_p, axis=1)
+            score_map["Min-Ensemble"] = np.min(z_p, axis=1)
+            score_map["Nonneg-OptLinear"] = z_p @ w_nonneg
+            score_map["GenEig-OptLinear"] = z_p @ w_star
+            score_map["Logit-Stack"] = z_p @ w_logit
+            cal_stack = np.vstack([cal_predictors[c](raw_p[:, c]) for c in range(k_ver)])
+            score_map["Calibrated-Min (KL-LCB)"] = np.min(cal_stack, axis=0)
+
+            for m_name, sc_vec in score_map.items():
+                curve_sub = exact_pool_bon_accuracy(sc_vec, y_p, sub_n)
+                full_row = np.full(n_arr.size, np.nan, dtype=np.float64)
+                full_row[valid_mask] = curve_sub
+                per_problem_curves[m_name].append((int(p_idx), full_row))
+
+    # 汇总全题平均准确率与标准误
+    cv_results: dict[str, dict[str, np.ndarray]] = {}
+    counts_by_n = np.zeros(n_arr.size, dtype=np.int64)
+    for m_name in all_method_names:
+        mat_curves = np.vstack([row for _, row in per_problem_curves[m_name]])
+        valid_counts = np.sum(~np.isnan(mat_curves), axis=0)
+        if m_name == all_method_names[0]:
+            counts_by_n = valid_counts
+        mean_c = np.nanmean(mat_curves, axis=0)
+        std_c = np.nanstd(mat_curves, axis=0, ddof=1)
+        se_c = np.where(valid_counts > 1, std_c / np.sqrt(np.maximum(1, valid_counts)), 0.0)
+        cv_results[m_name] = {
+            "accuracy": mean_c,
+            "se": se_c,
+            "ci_low": np.clip(mean_c - 1.96 * se_c, 0.0, 1.0),
+            "ci_high": np.clip(mean_c + 1.96 * se_c, 0.0, 1.0),
+        }
+
+    return {
+        "verifier_names": names,
+        "n_problems": n_probs,
+        "n_total_candidates": int(all_y.size),
+        "p_hat": p_hat,
+        "n_values": n_arr,
+        "problem_counts_by_n": counts_by_n,
+        "per_verifier_diag": per_diag,
+        "symmetric_diag": sym_diag,
+        "general_linear_diag": opt_lin_diag,
+        "general_min_qp_diag": min_qp_diag,
+        "copula_eta1": float(eta1),
+        "copula_eta0": float(eta0),
+        "copula_active_set0": qp_r0["active_set"],
+        "is_nonneg_corr0": bool(np.all(corr_neg_spd >= -1e-12)),
+        "cv_results": cv_results,
+    }
+
+
+def evaluate_joint_m_n_calibration_on_real_pools(
+    cal_scores: np.ndarray,
+    cal_correct: np.ndarray,
+    test_pools: Sequence[tuple[np.ndarray, np.ndarray]],
+    m_grid: Sequence[int] = (100, 200, 400, 800, 2000, 5000, 15000, 40000),
+    n_values: Sequence[int] = (1, 2, 4, 8, 16, 32, 64),
+    sota_m_cal: int = 400,
+    sota_n_bins: int = 20,
+    sota_repeats: int = 60,
+    grid_repeats: int = 80,
+    delta: float = 0.05,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """在真实候选池上对比 8 类 SOTA 校准器及定理 6C 联合 (M, N) 2D 网格与 1/5 vs 2/5 标度。"""
+    c_s = np.asarray(cal_scores, dtype=np.float64).ravel()
+    c_y = np.asarray(cal_correct, dtype=np.int64).ravel()
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    m_arr = np.asarray([int(m) for m in m_grid if int(m) <= c_s.size], dtype=np.int64)
+    if m_arr.size == 0:
+        m_arr = np.array([min(200, int(c_s.size))], dtype=np.int64)
+
+    # 1. SOTA 8 方法同场对比（固定小样本 M=sota_m_cal）
+    rng = np.random.default_rng(seed)
+    m_sota = min(int(sota_m_cal), int(c_s.size))
+    sota_runs: dict[str, np.ndarray] = {
+        m_name: np.zeros((int(sota_repeats), n_arr.size), dtype=np.float64)
+        for m_name in _SUPPORTED_SOTA_CALIBRATORS
+    }
+
+    # 先对测试池按长度分组加速所有方法
+    parsed_pools = [
+        (np.asarray(ts, dtype=np.float64).ravel(), np.asarray(ty, dtype=np.int64).ravel())
+        for ts, ty in test_pools
+    ]
+    raw_curves = np.array([exact_pool_bon_accuracy(ts, ty, n_arr) for ts, ty in parsed_pools])
+    standard_bon_curve = np.mean(raw_curves, axis=0)
+
+    # 分桶方法加速查表；连续方法（Platt / Isotonic）直接逐题精确池评估
+    bucket_methods = tuple(m for m in _SUPPORTED_SOTA_CALIBRATORS if m in _SOTA_BIN_METHOD_MAP)
+    for r_idx in range(int(sota_repeats)):
+        pick = rng.choice(c_s.size, size=m_sota, replace=False)
+        s_sub = c_s[pick]
+        y_sub = c_y[pick].astype(np.float64)
+
+        sota_runs["standard_bon"][r_idx] = standard_bon_curve
+
+        # Platt & Isotonic 逐题精确评估
+        for cont_m in ("platt_scaling", "isotonic_pava"):
+            pred_fn, _ = _fit_sota_calibrator_predictor(s_sub, y_sub, method=cont_m)
+            # 对 Platt：若斜率 a > 0 且无异常浮点塌陷，等价于 Standard-BoN；仍精确调用确保普适性
+            curves = [exact_pool_bon_accuracy(pred_fn(ts), ty, n_arr) for ts, ty in parsed_pools]
+            sota_runs[cont_m][r_idx] = np.mean(curves, axis=0)
+
+        # 分桶 5 法共用同一个统一参考分位边界，保证公平对比
+        edges_ref = _build_empirical_edges(c_s, int(sota_n_bins), binning="quantile")
+        k_ref = int(edges_ref.size + 1)
+        b_pick = np.searchsorted(edges_ref, s_sub, side="right")
+        counts = np.bincount(b_pick, minlength=k_ref).astype(np.float64)
+        pos = np.bincount(b_pick, weights=y_sub, minlength=k_ref).astype(np.float64)
+        prior_p = float(np.mean(y_sub))
+
+        if r_idx == 0:
+            # 惰性构造测试池超几何查表结构
+            buckets_by_len: dict[int, tuple[list[np.ndarray], list[np.ndarray]]] = {}
+            for ts, ty in parsed_pools:
+                b_t = np.searchsorted(edges_ref, ts, side="right")
+                c_row = np.bincount(b_t, minlength=k_ref)
+                y_row = np.bincount(b_t, weights=ty, minlength=k_ref).astype(np.int64)
+                l_len = int(ts.size)
+                buckets_by_len.setdefault(l_len, ([], []))
+                buckets_by_len[l_len][0].append(c_row)
+                buckets_by_len[l_len][1].append(y_row)
+            sota_groups = {
+                l_len: (
+                    np.asarray(cl, dtype=np.int64),
+                    np.asarray(yl, dtype=np.int64),
+                    _build_hypergeom_table(l_len, n_arr),
+                )
+                for l_len, (cl, yl) in buckets_by_len.items()
+            }
+
+        for bm in bucket_methods:
+            est = compute_bin_calibrator_scores(
+                counts,
+                pos,
+                method=_SOTA_BIN_METHOD_MAP[bm],
+                prior_p=prior_p,
+                delta=delta,
+                prior_strength=2.0,
+            )
+            sota_runs[bm][r_idx] = _eval_mapped_pools_fast(sota_groups, est, n_arr, len(parsed_pools))
+
+    sota_summary = {}
+    for m_name, mat in sota_runs.items():
+        mean_c = np.mean(mat, axis=0)
+        se_c = np.std(mat, axis=0, ddof=1) / math.sqrt(max(1, int(sota_repeats))) if sota_repeats > 1 else np.zeros_like(mean_c)
+        sota_summary[m_name] = {
+            "accuracy": mean_c,
+            "se": se_c,
+            "ci_low": np.clip(mean_c - 1.96 * se_c, 0.0, 1.0),
+            "ci_high": np.clip(mean_c + 1.96 * se_c, 0.0, 1.0),
+        }
+
+    # 2. 2D (M, N) 网格评估：1/5 最优标度 vs 联合 K*(M,N) vs 错标 2/5 vs 固定过细 K=60+MLE
+    grid_shape = (m_arr.size, n_arr.size)
+    mat_opt_1_5_kl = np.zeros(grid_shape, dtype=np.float64)
+    mat_opt_1_5_se = np.zeros(grid_shape, dtype=np.float64)
+    mat_joint_kl = np.zeros(grid_shape, dtype=np.float64)
+    mat_legacy_2_5_kl = np.zeros(grid_shape, dtype=np.float64)
+    mat_fixed60_mle = np.zeros(grid_shape, dtype=np.float64)
+
+    k_opt_1_5_list: list[int] = []
+    k_legacy_2_5_list: list[int] = []
+    n_match_list: list[int] = []
+
+    for i_m, m_val in enumerate(m_arr):
+        mv = int(m_val)
+        cal_info = calibration_minimax_scaling(mv, delta=delta, beta=2.0)
+        k_1_5 = max(3, int(cal_info["k_opt_theory"]))
+        k_2_5 = max(5, min(mv // 3, int(round(2.0 * (mv / max(1.0, math.log(mv))) ** 0.4))))
+        k_opt_1_5_list.append(k_1_5)
+        k_legacy_2_5_list.append(k_2_5)
+
+        joint_ref = joint_calibration_compute_scaling(mv, int(n_arr[-1]), beta=2.0, delta=delta)
+        n_match_list.append(int(joint_ref["n_match"]))
+
+        r_opt = evaluate_finite_calibration_on_real_pools(
+            c_s, c_y, parsed_pools, m_cal=mv, n_bins=k_1_5, n_values=n_arr,
+            binning="quantile", methods=("kl_lcb",), n_repeats=grid_repeats, delta=delta, seed=seed + 100 + i_m,
+        )
+        mat_opt_1_5_kl[i_m] = r_opt["methods"]["kl_lcb"]["accuracy"]
+        mat_opt_1_5_se[i_m] = r_opt["methods"]["kl_lcb"]["se"]
+
+        r_leg = evaluate_finite_calibration_on_real_pools(
+            c_s, c_y, parsed_pools, m_cal=mv, n_bins=k_2_5, n_values=n_arr,
+            binning="quantile", methods=("kl_lcb",), n_repeats=grid_repeats, delta=delta, seed=seed + 200 + i_m,
+        )
+        mat_legacy_2_5_kl[i_m] = r_leg["methods"]["kl_lcb"]["accuracy"]
+
+        r_fix = evaluate_finite_calibration_on_real_pools(
+            c_s, c_y, parsed_pools, m_cal=mv, n_bins=60, n_values=n_arr,
+            binning="quantile", methods=("mle",), n_repeats=grid_repeats, delta=delta, seed=seed + 300 + i_m,
+        )
+        mat_fixed60_mle[i_m] = r_fix["methods"]["mle"]["accuracy"]
+
+        # Joint K*(M, N) 可能随 N 变化：按不同 k_joint 去重批量评估
+        k_joint_by_n = [
+            max(3, int(joint_calibration_compute_scaling(mv, int(nv), beta=2.0, delta=delta)["k_joint_star"]))
+            for nv in n_arr
+        ]
+        if len(set(k_joint_by_n)) == 1 and k_joint_by_n[0] == k_1_5:
+            mat_joint_kl[i_m] = mat_opt_1_5_kl[i_m]
+        else:
+            for k_u in sorted(set(k_joint_by_n)):
+                n_sub_idx = [j for j, kv in enumerate(k_joint_by_n) if kv == k_u]
+                if k_u == k_1_5:
+                    mat_joint_kl[i_m, n_sub_idx] = mat_opt_1_5_kl[i_m, n_sub_idx]
+                else:
+                    r_j = evaluate_finite_calibration_on_real_pools(
+                        c_s, c_y, parsed_pools, m_cal=mv, n_bins=k_u, n_values=n_arr[n_sub_idx],
+                        binning="quantile", methods=("kl_lcb",), n_repeats=grid_repeats, delta=delta, seed=seed + 400 + i_m,
+                    )
+                    mat_joint_kl[i_m, n_sub_idx] = r_j["methods"]["kl_lcb"]["accuracy"]
+
+    return {
+        "n_values": n_arr,
+        "m_grid": m_arr,
+        "sota_m_cal": m_sota,
+        "sota_n_bins": int(sota_n_bins),
+        "sota_comparison": sota_summary,
+        "k_opt_1_5_by_m": k_opt_1_5_list,
+        "k_legacy_2_5_by_m": k_legacy_2_5_list,
+        "n_match_theory_by_m": n_match_list,
+        "standard_bon_curve": standard_bon_curve,
+        "grid_opt_1_5_kl": mat_opt_1_5_kl,
+        "grid_opt_1_5_se": mat_opt_1_5_se,
+        "grid_joint_kl": mat_joint_kl,
+        "grid_legacy_2_5_kl": mat_legacy_2_5_kl,
+        "grid_fixed60_mle": mat_fixed60_mle,
+    }
+
+
+def _within_prompt_zscore_2d(scores: np.ndarray) -> np.ndarray:
+    """对每行（单次试验抽出的 N 个候选分数）严格在线计算 Z-Score，零池外泄露。"""
+    if scores.shape[1] <= 1:
+        return np.zeros_like(scores, dtype=np.float64)
+    mean = np.mean(scores, axis=1, keepdims=True)
+    std = np.std(scores, axis=1, ddof=1, keepdims=True)
+    return (scores - mean) / np.maximum(std, 1e-6)
+
+
+def evaluate_real_prompt_heterogeneity(
+    pools_with_strata: Sequence[tuple[str, np.ndarray, np.ndarray]],
+    n_values: Sequence[int] = (1, 2, 4, 8, 16, 32, 64),
+    n_folds: int = 5,
+    n_trials_per_problem: int = 25,
+    n_bins: int = 15,
+    n_simpson_bins: int = 10,
+    delta: float = 0.05,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """在真实跨领域/多难度题目池上验证定理 7A 辛普森混杂遮蔽与定理 7B 题内 Z-Score 交叉。
+
+    Args:
+        pools_with_strata: 题目序列，每项为 (stratum_name, scores_1d, is_correct_1d)。
+    """
+    if len(pools_with_strata) == 0:
+        raise ValueError("pools_with_strata 不能为空")
+    parsed: list[tuple[str, np.ndarray, np.ndarray]] = []
+    for st_name, sc, yc in pools_with_strata:
+        s_arr = np.asarray(sc, dtype=np.float64).ravel()
+        y_arr = np.asarray(yc, dtype=bool).ravel()
+        if s_arr.size == 0 or s_arr.shape != y_arr.shape:
+            raise ValueError(f"域 {st_name!r} 存在空池或长度不匹配")
+        parsed.append((str(st_name), s_arr, y_arr))
+
+    # 1. 定理 7A 真实分桶辛普森分解与方差诊断
+    strata_names = sorted({item[0] for item in parsed})
+    all_s = np.concatenate([item[1] for item in parsed])
+    all_y = np.concatenate([item[2] for item in parsed])
+
+    # 按题内归一化方差估计各域仿射偏移强度 vs 先验异质性
+    strata_summary: dict[str, dict[str, float | int]] = {}
+    st_weights = []
+    st_means = []
+    st_ps = []
+    st_within_vars = []
+    for st in strata_names:
+        sub = [item for item in parsed if item[0] == st]
+        s_st = np.concatenate([x[1] for x in sub])
+        y_st = np.concatenate([x[2] for x in sub])
+        pos_s = s_st[y_st]
+        neg_s = s_st[~y_st]
+        mu_s = float(np.mean(s_st))
+        sd_s = float(np.std(s_st, ddof=1)) if s_st.size > 1 else 1e-6
+        s1 = float(np.std(pos_s, ddof=1)) if pos_s.size > 1 else 1e-6
+        s0 = float(np.std(neg_s, ddof=1)) if neg_s.size > 1 else 1e-6
+        p_st = float(np.mean(y_st))
+        strata_summary[st] = {
+            "n_problems": len(sub),
+            "n_candidates": int(s_st.size),
+            "p_hat": p_st,
+            "mean_score": mu_s,
+            "std_score": sd_s,
+            "mu1": float(np.mean(pos_s)) if pos_s.size > 0 else 0.0,
+            "sigma1": s1,
+            "mu0": float(np.mean(neg_s)) if neg_s.size > 0 else 0.0,
+            "sigma0": s0,
+            "kappa": float(s0 / max(1e-12, s1)),
+        }
+        st_weights.append(float(s_st.size))
+        st_means.append(mu_s)
+        st_ps.append(p_st)
+        st_within_vars.append(sd_s * sd_s)
+
+    w_st = np.asarray(st_weights, dtype=np.float64)
+    w_st /= float(np.sum(w_st))
+    mean_arr = np.asarray(st_means, dtype=np.float64)
+    p_arr = np.asarray(st_ps, dtype=np.float64)
+    within_sd_pooled = math.sqrt(max(1e-12, float(np.sum(w_st * np.asarray(st_within_vars)))))
+    norm_means = mean_arr / within_sd_pooled
+    affine_shift_var = float(np.sum(w_st * (norm_means - float(np.sum(w_st * norm_means))) ** 2))
+    prior_induced_shift_var = float(np.sum(w_st * (p_arr - float(np.sum(w_st * p_arr))) ** 2))
+
+    # 离散分位桶辛普森斜率分解
+    inner_edges = _build_empirical_edges(all_s, int(n_simpson_bins), binning="quantile")
+    k_simp = int(inner_edges.size + 1)
+    bin_all = np.searchsorted(inner_edges, all_s, side="right")
+    cnt_pool = np.bincount(bin_all, minlength=k_simp).astype(np.float64)
+    pos_pool = np.bincount(bin_all, weights=all_y.astype(np.float64), minlength=k_simp)
+    q_pool_bins = np.where(cnt_pool > 0, pos_pool / np.maximum(1.0, cnt_pool), np.nan)
+
+    g_cnt = len(strata_names)
+    cnt_g = np.zeros((g_cnt, k_simp), dtype=np.float64)
+    q_g = np.full((g_cnt, k_simp), np.nan, dtype=np.float64)
+    for g_idx, st in enumerate(strata_names):
+        sub = [item for item in parsed if item[0] == st]
+        s_st = np.concatenate([x[1] for x in sub])
+        y_st = np.concatenate([x[2] for x in sub]).astype(np.float64)
+        b_st = np.searchsorted(inner_edges, s_st, side="right")
+        c_row = np.bincount(b_st, minlength=k_simp).astype(np.float64)
+        p_row = np.bincount(b_st, weights=y_st, minlength=k_simp)
+        cnt_g[g_idx] = c_row
+        valid_g = c_row > 0
+        q_g[g_idx, valid_g] = p_row[valid_g] / c_row[valid_g]
+
+    w_post = cnt_g / np.maximum(1.0, cnt_pool[None, :])
+    delta_pool = []
+    within_slopes = []
+    between_terms = []
+    masked_transitions = 0
+    for b in range(k_simp - 1):
+        dq_p = float(q_pool_bins[b + 1] - q_pool_bins[b])
+        both = (cnt_g[:, b] > 0) & (cnt_g[:, b + 1] > 0)
+        if np.any(both):
+            w_avg = 0.5 * (w_post[both, b] + w_post[both, b + 1])
+            w_sum = max(1e-12, float(np.sum(w_avg)))
+            w_norm = w_avg / w_sum
+            within_s = float(np.sum(w_norm * (q_g[both, b + 1] - q_g[both, b])))
+        else:
+            within_s = dq_p
+        between_s = dq_p - within_s
+        delta_pool.append(dq_p)
+        within_slopes.append(within_s)
+        between_terms.append(between_s)
+        if within_s < -1e-4 and dq_p > 1e-4:
+            masked_transitions += 1
+
+    # 2. 定理 7B 严格 5-Fold 按题 CV + 严格在线 N-样本 Z-Score 评估
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    n_probs = len(parsed)
+    eff_folds = min(int(n_folds), n_probs)
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n_probs)
+    folds = np.array_split(perm, eff_folds)
+
+    algo_names = [
+        "Standard-BoN",
+        "Pooled-KL-LCB",
+        "Within-Prompt-Z-KL-LCB",
+        "Hybrid-Adaptive-KL-LCB",
+    ]
+    hits = {a: np.zeros(n_arr.size, dtype=np.float64) for a in algo_names}
+    eval_counts_by_n = np.zeros(n_arr.size, dtype=np.int64)
+
+    for f_idx in range(eff_folds):
+        test_idx = folds[f_idx]
+        train_idx = np.concatenate([folds[j] for j in range(eff_folds) if j != f_idx])
+
+        cal_s = np.concatenate([parsed[i][1] for i in train_idx])
+        cal_y = np.concatenate([parsed[i][2] for i in train_idx]).astype(np.float64)
+        cal_z = np.concatenate([
+            _within_prompt_zscore_2d(parsed[i][1][None, :]).ravel() for i in train_idx
+        ])
+
+        pred_pooled, _ = _fit_sota_calibrator_predictor(
+            cal_s, cal_y, method="kl_lcb", n_bins=n_bins, delta=delta
+        )
+        pred_within, _ = _fit_sota_calibrator_predictor(
+            cal_z, cal_y, method="kl_lcb", n_bins=n_bins, delta=delta
+        )
+
+        # 用训练折子抽样（内部留出）自适应确定 N >= 4 时 Hybrid 选择 Pooled 还是 Within-Z（零测试集泄露）
+        hybrid_use_within_by_n: dict[int, bool] = {}
+        cal_sub_idx = train_idx[: min(len(train_idx), 400)]
+        for nv in n_arr:
+            nv_int = int(nv)
+            if nv_int <= 2:
+                hybrid_use_within_by_n[nv_int] = False
+                continue
+            pool_hits, within_hits, cal_cnt = 0.0, 0.0, 0
+            for ci in cal_sub_idx:
+                _, cs, cy = parsed[ci]
+                if cs.size < nv_int:
+                    continue
+                c_perms = np.array([rng.permutation(cs.size)[:nv_int] for _ in range(8)], dtype=np.int64)
+                cs_mat = cs[c_perms]
+                cy_mat = cy[c_perms]
+                row_i = np.arange(8)
+                idx_p = _argmax_random_tie_2d(pred_pooled(cs_mat), rng)
+                idx_w = _argmax_random_tie_2d(pred_within(_within_prompt_zscore_2d(cs_mat)), rng)
+                pool_hits += float(np.count_nonzero(cy_mat[row_i, idx_p]))
+                within_hits += float(np.count_nonzero(cy_mat[row_i, idx_w]))
+                cal_cnt += 8
+            hybrid_use_within_by_n[nv_int] = (within_hits > pool_hits) if cal_cnt > 0 else False
+
+        row_idx = np.arange(int(n_trials_per_problem))
+        for p_idx in test_idx:
+            _, s_arr, y_arr = parsed[p_idx]
+            pool_len = int(s_arr.size)
+            valid_n = n_arr[n_arr <= pool_len]
+            if valid_n.size == 0:
+                continue
+            max_n = int(np.max(valid_n))
+            perms = np.array(
+                [rng.permutation(pool_len)[:max_n] for _ in range(int(n_trials_per_problem))],
+                dtype=np.int64,
+            )
+            s_full = s_arr[perms]
+            y_full = y_arr[perms]
+            p_full = pred_pooled(s_full)
+
+            for k_idx, nv in enumerate(n_arr):
+                nv_int = int(nv)
+                if nv_int > pool_len:
+                    continue
+                eval_counts_by_n[k_idx] += int(n_trials_per_problem)
+                s_sub = s_full[:, :nv_int]
+                y_sub = y_full[:, :nv_int]
+
+                idx_std = _argmax_random_tie_2d(s_sub, rng)
+                hits["Standard-BoN"][k_idx] += float(np.count_nonzero(y_sub[row_idx, idx_std]))
+
+                idx_pool = _argmax_random_tie_2d(p_full[:, :nv_int], rng)
+                hits["Pooled-KL-LCB"][k_idx] += float(np.count_nonzero(y_sub[row_idx, idx_pool]))
+
+                if nv_int == 1:
+                    hits["Within-Prompt-Z-KL-LCB"][k_idx] += float(np.count_nonzero(y_sub[:, 0]))
+                    hits["Hybrid-Adaptive-KL-LCB"][k_idx] += float(np.count_nonzero(y_sub[:, 0]))
+                else:
+                    z_sub = _within_prompt_zscore_2d(s_sub)
+                    w_sub = pred_within(z_sub)
+                    idx_within = _argmax_random_tie_2d(w_sub, rng)
+                    hits["Within-Prompt-Z-KL-LCB"][k_idx] += float(np.count_nonzero(y_sub[row_idx, idx_within]))
+                    idx_hyb = idx_within if hybrid_use_within_by_n[nv_int] else idx_pool
+                    hits["Hybrid-Adaptive-KL-LCB"][k_idx] += float(np.count_nonzero(y_sub[row_idx, idx_hyb]))
+
+    if np.any(eval_counts_by_n == 0):
+        raise ValueError("存在没有任何题目满足 pool_size >= n 的预算值")
+
+    algo_results: dict[str, dict[str, np.ndarray]] = {}
+    denom = eval_counts_by_n.astype(np.float64)
+    for a_name in algo_names:
+        acc = hits[a_name] / denom
+        se = np.sqrt(acc * (1.0 - acc) / denom)
+        algo_results[a_name] = {
+            "accuracy": acc,
+            "se": se,
+            "ci_low": np.clip(acc - 1.96 * se, 0.0, 1.0),
+            "ci_high": np.clip(acc + 1.96 * se, 0.0, 1.0),
+        }
+
+    return {
+        "n_problems": n_probs,
+        "n_total_candidates": int(all_s.size),
+        "strata_names": strata_names,
+        "strata_summary": strata_summary,
+        "affine_shift_var": affine_shift_var,
+        "prior_induced_shift_var": prior_induced_shift_var,
+        "simpson_decomposition": {
+            "n_bins": k_simp,
+            "q_pool_bins": q_pool_bins,
+            "q_strata_bins": q_g,
+            "strata_post_weights": w_post,
+            "delta_q_pool": np.asarray(delta_pool, dtype=np.float64),
+            "within_slope_term": np.asarray(within_slopes, dtype=np.float64),
+            "between_confounding_term": np.asarray(between_terms, dtype=np.float64),
+            "masked_transitions": int(masked_transitions),
+            "pooled_appears_monotone": bool(all(d >= -1e-4 for d in delta_pool)),
+        },
+        "n_values": n_arr,
+        "eval_trials_by_n": eval_counts_by_n,
+        "algorithms": algo_results,
+    }
+
+
 __all__ = [
     "diagnose_multi_verifier_correlations",
     "diagnose_real_verifier_distribution",
     "evaluate_discrete_algorithms_on_real_pools",
     "evaluate_finite_calibration_on_real_pools",
+    "evaluate_heterogeneous_multi_rm_on_real_pools",
+    "evaluate_joint_m_n_calibration_on_real_pools",
+    "evaluate_real_prompt_heterogeneity",
     "exact_pool_bon_accuracy",
     "extract_boxed_answer",
+    "fit_and_predict_sota_calibrator",
     "is_math_answer_correct",
+    "is_math_answer_correct_any",
     "normalize_math_answer",
 ]
