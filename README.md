@@ -28,43 +28,41 @@
 ```text
 test-time-scaling-theory/
 ├── LICENSE                                    # MIT 开源许可证
-├── pyproject.toml                             # 项目构建与 pytest 配置 (v0.9.0)
+├── pyproject.toml                             # 项目构建与 pytest 配置 (v1.0.0)
 ├── PROOF.md                                   # 主定理 6–7、补充定理 5 与附录 A 预备定理 1–4 证明稿
-├── RELATED_WORK.md                            # 22 篇 TTS 及被动非参数最大化/离线悲观/极值/Copula 文献审计
+├── RELATED_WORK.md                            # 27 篇 TTS 及被动/主动非参数极值估计、离线悲观、极值与统计检验文献审计
 ├── README.md                                  # 项目总览与复现指南
+├── paper/
+│   ├── main.tex                               # 正式英文 LaTeX 预印本论文（统一符号、主文 §1–§7 + 完整数学附录 A–E）
+│   └── references.bib                         # 逐篇联网核验的 27 篇 BibTeX 参考文献库
 ├── src/tts_theory/
-│   ├── __init__.py                            # 统一公开 API 导出 (v0.9.0)
+│   ├── __init__.py                            # 统一公开 API 导出 (v1.0.0)
 │   ├── calibration_theory.py                  # 主定理 6：KL-LCB、一致正则类、平衡点 N_balance 与紧 Gamma 间距界
-│   ├── heterogeneity_theory.py                # 主定理 7：辛普森遮蔽、纯秩界与仿射不变样本 Z_{i,N} 极值收敛
+│   ├── heterogeneity_theory.py                # 主定理 7：辛普森遮蔽、非退化纯秩界与仿射不变样本 Z_{i,N} 极值收敛
 │   ├── ensemble_theory.py                     # 补充定理 5：Safe-Fisher/QDA/含零乘子 QP/Copula 统一模块
-│   ├── real_eval.py                           # 三种分桶协议、独立单次划分 (50/20/30) 配对 t 检验与嵌套 CV 引擎
+│   ├── real_eval.py                           # 三种分桶协议（带防呆校验）、单次划分 (50/20/30) 配对 t 检验与嵌套 CV 引擎
 │   ├── theorems.py                            # 预备定理 1–4 分布规格、散度边界与异质错类权重接口
 │   ├── integrals.py                           # 双精度 PIT 分段 Gauss-Legendre / quad 引擎
 │   ├── simulator.py                           # 流式分块向量化蒙特卡洛仿真器
 │   └── algorithms.py                          # StandardBoN, OptimalNStarBoN, EmpiricalScoreCalibrator,
 │                                              # CalibratedWeightedBoN, TwoStageVerifiedMajority
-├── tests/                                     # 全套 11 个离线测试模块（共 67 项测试）
-│   ├── test_theorems.py                       # 预备定理 1–4 数值精度与 100k–1.5M MC 交叉验证
-│   ├── test_algorithms.py                     # 推理选择算法与经验校准器单元测试
-│   ├── test_extensions.py                     # 定理 5 & 定理 6 基础单元测试
-│   ├── test_real_eval.py                      # 真实池评估与等价判分单元测试
-│   ├── test_stage2_real_eval.py               # 异构多 RM / 8-SOTA / 辛普森异质性 API 单元测试
-│   ├── test_v4_theory.py                      # 定理 5–7 推广、Fano 1/5、KL-LCB、N^{-2} 与辛普森单测
-│   ├── test_v5_rigor.py                       # 边界条件与极端构造回归验证（9 项）
-│   ├── test_v6_theory.py                      # 定理 5A-III (Safe-Fisher/QDA)、6C 等频检验与 7C 单测（6 项）
-│   ├── test_v7_counterexamples.py             # 反例复现、零乘子精确积分与聚类统计推断单测（5 项）
-│   ├── test_v8_rigor.py                       # 二审边界、beta<=0.5 间距界、样本 Z 收敛与三分支门控单测（7 项）
-│   └── test_v9_consolidation.py               # 三审仿射变换、三种分桶协议、紧间距界、纯解析区间与单次划分单测（6 项）
+├── tests/                                     # 全套 12 个离线测试模块（共 73 项测试）
+│   ├── test_theorems.py / test_algorithms.py / test_extensions.py
+│   ├── test_real_eval.py / test_stage2_real_eval.py
+│   ├── test_v4_theory.py / test_v5_rigor.py / test_v6_theory.py
+│   ├── test_v7_counterexamples.py / test_v8_rigor.py / test_v9_consolidation.py
+│   └── test_v10_release.py                    # 四审收官：q_2(3.5) 端点、sqrt(c_1) 常数、零方差平局、协议防呆与同 K 消融（6 项）
 ├── scripts/
 │   ├── verify_theorems.py / run_experiments.py / plot_figures.py
 │   ├── run_v2_extensions.py / plot_v2_figures.py
 │   ├── run_real_llm_experiments.py / plot_real_figures.py
 │   ├── run_stage2_experiments.py / plot_stage2_figures.py
 │   ├── verify_v4_theory.py / verify_v6_theory.py / verify_v7_rigor.py / verify_v8_rigor.py
-│   └── verify_v9_consolidation.py             # 三审全套协议对齐、单次划分 t 检验与同预算污染压力测试 -> v9_consolidation_verification.json
+│   ├── verify_v9_consolidation.py             # 三种分桶协议、单次划分 50/20/30 主表与受控尾污染压力测试
+│   └── verify_v10_release.py                  # 同 K 公平消融、四相分布漂移矩阵与自然坍塌子集审计 -> v10_release_verification.json
 └── results/
-    ├── EXPERIMENT_REPORT.md                   # 全套实验与风险控制实证报告（含 §13 V9 专项核验）
-    ├── v9_consolidation_verification.json     # 三种分桶协议、单次划分 50/20/30 主表与污染对照精确结果
+    ├── EXPERIMENT_REPORT.md                   # 全套实验与风险控制实证报告（含 §13 V9 与 §14 V10 收官核验）
+    ├── v9_consolidation_verification.json / v10_release_verification.json
     ├── theorem_verification.json / experiment_results.json / v2_extension_results.json
     ├── real_llm_results.json / v4_theory_verification.json / v6_theory_verification.json
     ├── v7_rigor_verification.json / v8_rigor_verification.json
@@ -84,16 +82,17 @@ git clone https://github.com/6Riemann9/test-time-scaling-theory.git
 cd test-time-scaling-theory
 python -m pip install --no-deps --no-build-isolation -e .
 
-# 2. 运行全量单元测试（共 67 项离线测试）
+# 2. 运行全量单元测试（共 73 项离线测试）
 python -m pytest -v
 
-# 3. 运行理论校验与 V9 协议对齐/单次留出统计验证脚本
+# 3. 运行理论校验与 V9/V10 协议对齐、公平消融及分布漂移验证脚本
 python scripts/verify_theorems.py
 python scripts/verify_v4_theory.py
 python scripts/verify_v6_theory.py
 python scripts/verify_v7_rigor.py
 python scripts/verify_v8_rigor.py
 python scripts/verify_v9_consolidation.py
+python scripts/verify_v10_release.py
 
 # 4. 运行真实大模型/RM 全量实验与绘图（首次运行将缓存数据至 data/）
 python scripts/run_real_llm_experiments.py

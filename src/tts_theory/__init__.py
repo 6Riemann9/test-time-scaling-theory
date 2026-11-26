@@ -180,4 +180,4 @@ __all__ = [
     "evaluate_single_split_prompt_heterogeneity",
 ]
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"

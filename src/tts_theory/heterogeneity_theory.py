@@ -314,12 +314,12 @@ def _sample_prompt_batch(
 
 
 def _within_prompt_zscore(scores: np.ndarray) -> np.ndarray:
-    """对每行（单道题内 N 个样本）做 Z-score 标准化（std 极小时退化为中心化）。"""
+    """对每行（单道题内 N 个样本）做 Z-score 标准化（零方差行精确退化为全 0）。"""
     mean = np.mean(scores, axis=1, keepdims=True)
     if scores.shape[1] <= 1:
         return np.zeros_like(scores, dtype=np.float64)
     std = np.std(scores, axis=1, ddof=1, keepdims=True)
-    return (scores - mean) / np.maximum(std, 1e-6)
+    return np.where(std > 1e-12, (scores - mean) / np.maximum(std, 1e-12), 0.0)
 
 
 def evaluate_pooled_vs_within_prompt_calibration(

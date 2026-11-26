@@ -543,6 +543,11 @@ def evaluate_finite_calibration_on_real_pools(
         raise ValueError("binning 必须为 'uniform' 或 'quantile'")
     if quantile_protocol not in ("semi_supervised", "sample_split", "in_sample"):
         raise ValueError("quantile_protocol 必须为 'semi_supervised', 'sample_split' 或 'in_sample'")
+    if binning != "quantile" and quantile_protocol != "semi_supervised":
+        raise ValueError(
+            f"quantile_protocol={quantile_protocol!r} 仅适用于 binning='quantile'；"
+            f"当前 binning={binning!r} 不支持该分位协议组合"
+        )
 
     n_tests = len(test_pools)
     raw_curves = np.empty((n_tests, len(n_values)), dtype=np.float64)
