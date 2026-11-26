@@ -145,24 +145,44 @@ def test_v6_thm5a3_qda_ceiling_monotonicity_and_n_minus_2_over_k() -> None:
 
 
 def test_v6_thm6c_zero_gap_n_agnostic_beats_truncated() -> None:
-    """定理 6C（V6）：验证零对数间隙全平面上界，及大 M 小 N 时 N-无关分桶优于截断分桶。"""
+    """定理 6C（V7）：显式采用等频分桶验证 N-无关上界特征与大 M 小 N 相对截断基线的增益。"""
+    z_small = tight_joint_minimax_scaling(
+        m_total=10_000, n_budget=8, beta=2.0, curvature_c=0.1, f_min=0.25, eta_radius=1.5
+    )
     z_gap = tight_joint_minimax_scaling(
         m_total=100_000, n_budget=8, beta=2.0, curvature_c=0.1, f_min=0.25, eta_radius=1.5
     )
-    assert z_gap["is_zero_gap_minimax_tight"] is True
     assert z_gap["uniform_bin_count_condition_holds"] is True
+    assert z_gap["upper_to_lower_rate_ratio"] > 0.0
+    assert z_gap["total_upper_bound"] < z_small["total_upper_bound"]
     assert z_gap["total_upper_bound"] > z_gap["minimax_rate_lower"] > 0.0
 
-    # 在大 M=50,000, 小 N=8 下对比 N-无关最优分桶 K*(M) 与 V5 截断分桶 K_comp=2
+    # 在大 M=50,000, 小 N=8 下对比 N-无关最优等频分桶 K*(M) 与 V5 截断等频分桶 K_comp=2
     spec = GaussianVerifierSpec(p=0.30, mu1=0.6, sigma1=1.0, mu0=0.0, sigma0=1.8)
     k_n_agnostic = int(calibration_minimax_scaling(50_000, beta=2.0)["k_opt_theory"])
     assert k_n_agnostic >= 6
 
     sim_agnostic = simulate_finite_calibration_scaling(
-        spec, m_cal=50_000, n_bins=k_n_agnostic, n_values=[4, 8, 16], methods=("kl_lcb",), n_repeats=120, delta=0.05, seed=91
+        spec,
+        m_cal=50_000,
+        n_bins=k_n_agnostic,
+        n_values=[4, 8, 16],
+        binning="quantile",
+        methods=("kl_lcb",),
+        n_repeats=120,
+        delta=0.05,
+        seed=91,
     )
     sim_trunc = simulate_finite_calibration_scaling(
-        spec, m_cal=50_000, n_bins=2, n_values=[4, 8, 16], methods=("kl_lcb",), n_repeats=120, delta=0.05, seed=91
+        spec,
+        m_cal=50_000,
+        n_bins=2,
+        n_values=[4, 8, 16],
+        binning="quantile",
+        methods=("kl_lcb",),
+        n_repeats=120,
+        delta=0.05,
+        seed=91,
     )
     acc_ag = sim_agnostic["methods"]["kl_lcb"]["accuracy"]
     acc_tr = sim_trunc["methods"]["kl_lcb"]["accuracy"]
@@ -235,7 +255,7 @@ def test_v6_thm7c_simulation_induced_collapse_on_monotone_verifier() -> None:
 
 
 def test_v6_backward_compatibility_joint_scaling_keys() -> None:
-    """确认 V6 对 joint_calibration_compute_scaling 的扩展保持 V5 字段 100% 向后兼容。"""
+    """确认 V6/V7 对 joint_calibration_compute_scaling 的扩展保持核心兼容字段无误。"""
     res = joint_calibration_compute_scaling(m_total=400, n_budget=10_000, beta=2.0)
     for k in (
         "k_cal_star",
@@ -252,7 +272,7 @@ def test_v6_backward_compatibility_joint_scaling_keys() -> None:
         "regime",
         "n_agnostic_k_opt",
         "n_agnostic_upper_rate",
-        "n_agnostic_is_minimax_tight",
     ):
         assert k in res
-    assert res["n_agnostic_is_minimax_tight"] is True
+    assert res["n_agnostic_k_opt"] == res["k_cal_star"]
+    assert abs(float(res["n_agnostic_upper_rate"]) - float(res["minimax_lower_rate"])) < 1e-15

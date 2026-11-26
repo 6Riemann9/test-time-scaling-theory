@@ -192,10 +192,26 @@ def verify_thm6c_zero_gap_minimax() -> dict:
     k_opt_50k = int(calibration_minimax_scaling(50_000, beta=2.0)["k_opt_theory"])
     n_grid = [2, 4, 8, 16, 32]
     sim_ag = simulate_finite_calibration_scaling(
-        spec, m_cal=50_000, n_bins=k_opt_50k, n_values=n_grid, methods=("kl_lcb",), n_repeats=150, delta=0.05, seed=91
+        spec,
+        m_cal=50_000,
+        n_bins=k_opt_50k,
+        n_values=n_grid,
+        binning="quantile",
+        methods=("kl_lcb",),
+        n_repeats=150,
+        delta=0.05,
+        seed=91,
     )
     sim_tr = simulate_finite_calibration_scaling(
-        spec, m_cal=50_000, n_bins=2, n_values=n_grid, methods=("kl_lcb",), n_repeats=150, delta=0.05, seed=91
+        spec,
+        m_cal=50_000,
+        n_bins=2,
+        n_values=n_grid,
+        binning="quantile",
+        methods=("kl_lcb",),
+        n_repeats=150,
+        delta=0.05,
+        seed=91,
     )
     return {
         "explicit_bounds": grid_cases,
@@ -358,13 +374,18 @@ def verify_real_data_checks(root: Path) -> dict:
                 {
                     "z_range": [float(qs[i]), float(qs[i + 1])],
                     "q_z": float(yf[m].mean()),
-                    "frac_p0": float(np.mean(pf[m] == 0.0)),
-                    "mean_p": float(pf[m].mean()),
+                    "frac_emp_zero_n64": float(np.mean(pf[m] == 0.0)),
+                    "mean_p_hat": float(pf[m].mean()),
                 }
             )
         out["acemath_rm_b_zscore_tail"] = {
             "n_problems": int(len(p_prompt)),
-            "frac_p0": float(np.mean(p_prompt == 0.0)),
+            "candidate_pool_size": int(rm_b.shape[1]),
+            "empirical_zero_success_rate_n64": float(np.mean(p_prompt == 0.0)),
+            "identifiability_note": (
+                "empirical_zero_success_rate_n64 measures finite-pool p_hat_64(X)=0 rather than "
+                "structural unsolvability p(X)=0; e.g. at true p=0.01, (1-0.01)^64 ~ 52.56%."
+            ),
             "var_z_pos": float(np.var(zf[yf == 1.0])),
             "var_z_neg": float(np.var(zf[yf == 0.0])),
             "kappa_z": float(np.std(zf[yf == 0.0]) / np.std(zf[yf == 1.0])),

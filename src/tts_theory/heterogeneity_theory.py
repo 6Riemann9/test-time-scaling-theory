@@ -392,7 +392,8 @@ def evaluate_pooled_vs_within_prompt_calibration(
 def diagnose_within_prompt_residual(spec: PromptHeterogeneitySpec) -> dict:
     """诊断题内 Z-Score 标准化的先验诱导残差偏移与 N=2 纯秩天花板（定理 7B）。
 
-    明确区分两类情形：
+    明确区分两类情形（对一般基底分布，样本标准差 s_hat_N 的 O_p(N^{-1/2}) 收敛
+    额外依赖有限四阶矩 E[S_tilde^4 | X] < inf；高斯族自动满足）：
     - 恒定先验 p(X) == p_0：消去仿射偏移 (b(X), a(X)) 后残差为零，后验跨题完全对齐；
     - 异质先验 p(X)：消去 (b(X), a(X)) 后仍保留由 p(X) 诱导的混合矩偏移与峰值 z_peak(X) 漂移。
     同时给出 N=2 时三种纯秩规则（Raw-BoN, Anti-BoN, Random）的理论天花板对比 Oracle 校准。
@@ -468,11 +469,15 @@ def diagnose_zscore_induced_collapse(
     sigma0_base: float = 1.0,
     z_grid: ArrayLike | None = None,
 ) -> dict:
-    """诊断题内 Z-Score 标准化自诱导异方差与不可解题尾主导坍塌（定理 7C）。
+    """诊断总体题内 Z-Score 标准化下的右尾竞争反转与渐近上限损失（定理 7C）。
 
-    原生支持边界原子层 p_g in {0.0, 1.0}：即使基底 Verifier 严格同方差单调 (kappa=1, dmu>0)，
-    对题内 Z-Score 池化后仍因边界原子方差保持 1 而内点可解题方差 < 1，在 Z 空间诱导出
-    kappa_Z > 1 与精确右尾极限 pi_1 / (pi_0 + pi_1)（pi_1=0 < pi_0 时跌向 0 并诱导大 N 坍塌）。
+    在支持边界原子层 p_g in {0.0, 1.0} 的同方差单调高斯基底上：
+    1. 核心尾部反转效应（无条件成立）：边界原子方差缩放为 1，而所有内点可解题承受方差压缩
+       v(p) < 1，因此在 Z*-空间精确导出右尾极限 pi_1 / (pi_0 + pi_1)（当 pi_0 > 0 = pi_1 时
+       跌向 0 并导致 Oracle Z*-校准器在大 N 下的渐近上限低于 Raw-BoN）；
+    2. 全方差分解中的总体异方差比 kappa_Z：一般情形下 Var(Z*|Y=c) = E[v(p)|Y=c] + Var(m_c|Y=c)，
+       多内点层且 Delta 足够大时可能出现 kappa_Z < 1（虽右尾仍趋于 0）；在单内点可解层 {0, p_1}
+       （pi_0 > 0, Delta > 0）下因 Var(m_1 | Y=1) = 0 而严格满足 kappa_Z > 1。
     """
     w = np.asarray(prompt_weights, dtype=np.float64).ravel()
     p_arr = np.asarray(prompt_p, dtype=np.float64).ravel()
@@ -506,16 +511,20 @@ def diagnose_zscore_induced_collapse(
     m0_g = (float(mu0_base) - mu_tilde) / std_tilde
     sd0_g = s0 / std_tilde
 
-    # 由全方差公式精确计算大 N Z-空间条件方差与 kappa_Z = sqrt(Var(Z*|Y=0)/Var(Z*|Y=1))
+    # 由全方差公式精确分解 Z*-空间条件方差（组内方差均值 + 组间均值方差）
     alpha1 = (w * p_arr) / p_bar
     alpha0 = (w * (1.0 - p_arr)) / (1.0 - p_bar)
     ez_pos = float(np.sum(alpha1 * m1_g))
     ez_neg = float(np.sum(alpha0 * m0_g))
-    var_z_pos = float(np.sum(alpha1 * (sd1_g * sd1_g + m1_g * m1_g)) - ez_pos * ez_pos)
-    var_z_neg = float(np.sum(alpha0 * (sd0_g * sd0_g + m0_g * m0_g)) - ez_neg * ez_neg)
+    within_var_z_pos = float(np.sum(alpha1 * (sd1_g * sd1_g)))
+    between_var_z_pos = float(np.sum(alpha1 * ((m1_g - ez_pos) ** 2)))
+    within_var_z_neg = float(np.sum(alpha0 * (sd0_g * sd0_g)))
+    between_var_z_neg = float(np.sum(alpha0 * ((m0_g - ez_neg) ** 2)))
+    var_z_pos = within_var_z_pos + between_var_z_pos
+    var_z_neg = within_var_z_neg + between_var_z_neg
     kappa_z = math.sqrt(max(var_z_neg, 1e-30) / max(var_z_pos, 1e-30))
 
-    # 精确解析计算 Z-空间池化密度与后验 q_{pool, Z}(z)
+    # 精确解析计算 Z*-空间池化密度与后验 q_{pool, Z}(z)
     pos_idx = np.flatnonzero(p_arr > 0.0)
     neg_idx = np.flatnonzero(p_arr < 1.0)
     log_pos_comp = np.array(
@@ -536,7 +545,6 @@ def diagnose_zscore_induced_collapse(
     if pi_0 + pi_1 > 0.0 and abs(s1 - s0) <= 1e-12:
         z_tail_limit = float(pi_1 / (pi_0 + pi_1))
     else:
-        # 比较全部正层与负层最小二次指数率 1/(2 sd^2)
         min_rate_pos = float(np.min(0.5 / (sd1_g[pos_idx] ** 2)))
         min_rate_neg = float(np.min(0.5 / (sd0_g[neg_idx] ** 2)))
         if abs(min_rate_pos - min_rate_neg) > 1e-12:
@@ -550,8 +558,6 @@ def diagnose_zscore_induced_collapse(
     q_z_peak = float(q_pool_z[peak_idx])
     tail_turn_down = bool(float(q_pool_z[-1]) < q_z_peak - 1e-3)
 
-    # 比较大 N 极限：Standard-BoN vs Oracle Within-Z-Cal-BoN
-    # 当基底同方差 (s0 <= s1, dmu > 0) 时，所有 0 < p_g < 1 可解题 Raw-BoN 渐近达 1，故总极限 = 1 - pi_0
     if s0 < s1 - 1e-12 or (abs(s0 - s1) <= 1e-12 and dmu > 0.0):
         raw_bon_asymptotic_acc = float(1.0 - pi_0)
     elif abs(s0 - s1) <= 1e-12 and abs(dmu) <= 1e-12:
@@ -559,7 +565,7 @@ def diagnose_zscore_induced_collapse(
     else:
         raw_bon_asymptotic_acc = float(pi_1)
 
-    # Oracle Z-校准按 q_pool_z(z) 选样：大 N 时内点可解题全部集中在 z_peak 附近
+    # 总体标准化 Z* 空间 Oracle 校准器在极限处选择 z_peak 附近样本（渐近上限损失分析）
     solvable_interior = (p_arr > 0.0) & (p_arr < 1.0)
     oracle_z_acc = float(pi_1)
     if np.any(solvable_interior):
@@ -569,12 +575,19 @@ def diagnose_zscore_induced_collapse(
             q_at_peak = float(special.expit(lp_g - ln_g))
             oracle_z_acc += float(w[g]) * q_at_peak
 
+    ceiling_loss = float(raw_bon_asymptotic_acc - float(oracle_z_acc))
+    has_ceiling_loss = bool(tail_turn_down and ceiling_loss > 1e-3)
+
     return {
         "z_grid": grid,
         "q_pool_z": q_pool_z,
         "pi_0_unsolvable": pi_0,
         "pi_1_trivial": pi_1,
         "p_bar": p_bar,
+        "within_var_z_pos": within_var_z_pos,
+        "between_var_z_pos": between_var_z_pos,
+        "within_var_z_neg": within_var_z_neg,
+        "between_var_z_neg": between_var_z_neg,
         "var_z_pos": var_z_pos,
         "var_z_neg": var_z_neg,
         "kappa_z": kappa_z,
@@ -585,7 +598,9 @@ def diagnose_zscore_induced_collapse(
         "tail_turn_down": tail_turn_down,
         "raw_bon_asymptotic_acc": raw_bon_asymptotic_acc,
         "oracle_z_cal_asymptotic_acc": float(oracle_z_acc),
-        "z_induces_collapse": bool(tail_turn_down and oracle_z_acc < raw_bon_asymptotic_acc - 1e-3),
+        "asymptotic_ceiling_loss": ceiling_loss,
+        "has_asymptotic_ceiling_loss": has_ceiling_loss,
+        "z_induces_collapse": has_ceiling_loss,
     }
 
 

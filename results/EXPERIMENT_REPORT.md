@@ -41,7 +41,7 @@
 | $\kappa = 1.20$ | `collapse` | `0.2500` | `500` | `0.6669` | `0.640989` | 过峰后衰退 |
 | $\kappa = 1.50$ | `collapse` | `0.2500` | `10` | `0.4263` | **`0.035338`** | 严重坍塌（远低于 $p$） |
 | $\kappa = 1.80$ | `collapse` | `0.2500` | `5` | `0.3661` | **`0.000351`** | 剧烈坍塌近零 |
-| $\epsilon = 0.08$（$\kappa=1.0$） | `contaminated_heavy_tail` | `0.2500` | `5` | `0.4232` | **`0.000000`** | 重尾污染彻底崩溃 |
+| $\epsilon = 0.08$（$\kappa=1.0$） | `contaminated_heavy_tail` | `0.2500` | `5` | `0.4232` | **`0.000000`** | 重尾污染趋零崩溃 |
 
 #### 2.2.2 闭式最优预算 $N^*$ 与精确数值最优 $N^*_{\text{exact}}$ 对比
 
@@ -115,8 +115,8 @@
 | **0.15** | `Standard-BoN` | `0.2489` | `0.2276` | `0.0108` | `0.0001` | **`0.0000`** | 全盘归零崩溃 |
 | **0.15** | `Optimal-N*` | `0.2489` | `0.3102` | `0.3102` | `0.3102` | `0.3102` | 稳健保留 $N^*=4$ 峰值 |
 | **0.15** | `Majority-Voting` | `0.2489` | `0.3011` | `0.2728` | `0.1371` | `0.0171` | 强诱饵主导崩溃 |
-| **0.15** | `Calibrated-Weighted-BoN` | `0.2489` | `0.5027` | `0.8223` | `0.9744` | **`1.00000`** | 彻底消除坍塌 |
-| **0.15** | `Two-Stage-Verified-Majority` | `0.2489` | `0.4409` | `0.7671` | `0.9636` | **`0.99983`** | 彻底消除坍塌 |
+| **0.15** | `Calibrated-Weighted-BoN` | `0.2489` | `0.5027` | `0.8223` | `0.9744` | **`1.00000`** | 消除坍塌并收敛 |
+| **0.15** | `Two-Stage-Verified-Majority` | `0.2489` | `0.4409` | `0.7671` | `0.9636` | **`0.99983`** | 消除坍塌并收敛 |
 | **0.15** | `Empirical-TwoStage`（无解析先验） | `0.2489` | `0.4375` | `0.7581` | `0.9605` | **`0.99980`** | 经验拟合几乎零损失 |
 
 ![Calibrated vs Standard BoN](figures/calibrated_vs_bon.png)
@@ -164,7 +164,7 @@
 ### 5.3 实验 G：有限校准集 $M$ 二次坍塌、LCB 消除与 Minimax 标度律（定理 6）
 
 1. **有限校准二次坍塌与 LCB 防御（$p=0.25, \Delta\mu=1.2, \kappa=1.5$，$q_{\sup}=0.4707$，$M=400$，2,000 次独立校准集重复）**：
-   - **非均匀等宽分桶（$K=20$）**：`MLE` 在 $N=16$ 达峰 `0.4382` 后因稀有尾桶假状元发生**二次坍塌**，至 $N=8192$ 跌至 **`0.3928`**（`Laplace` 平滑同样缓步跌至 `0.4261`）；而二项专用 **`Wilson-LCB`** 彻底根治坍塌，在 $N=256 \sim 8192$ 稳居 **`0.4397`**。通用常数 $7/3$ 的 `Empirical-Bernstein LCB` 在 $M=400$ 小样本下过保守（大量桶截断归零，仅得 `0.2567`），凸显二元标签场景下 **Wilson-LCB 的显著紧凑优势**。
+   - **非均匀等宽分桶（$K=20$）**：`MLE` 在 $N=16$ 达峰 `0.4382` 后因稀有尾桶假高分发生**二次坍塌**，至 $N=8192$ 跌至 **`0.3928`**（`Laplace` 平滑同样缓步跌至 `0.4261`）；而二项专用 **`Wilson-LCB`** 显著消除坍塌，在 $N=256 \sim 8192$ 稳居 **`0.4397`**。通用常数 $7/3$ 的 `Empirical-Bernstein LCB` 在 $M=400$ 小样本下过保守（大量桶截断归零，仅得 `0.2567`），凸显二元标签场景下 **Wilson-LCB 的紧凑优势**。
    - **过细等频分桶（$K=40$）**：`MLE` 受赢家诅咒压制于 `0.4278`（`Laplace`: `0.4315`），`Wilson-LCB` 领先至 **`0.4350`**。
 2. **Minimax 遗憾与分桶标度历史记录（$N=5000$，扫描 $M \in [200, 50{,}000]$）**：
    - 本组 V2 历史实验在 $M \in [200, 50{,}000]$ 上沿 $K: 9 \to 58$ 扫描遗憾收敛，遗憾 $q^* - \mathbb{E}[P(N=5000)]$ 从 `0.0422` 稳定收敛至 **`0.0044`**；双对数回归斜率为 **`-0.4842`**（`Bernstein-LCB` 在充分样本区 $M \ge 5000$ 遗憾从 `0.0100` 收敛至 `0.0044`，拟合斜率 **`-0.4062`**，高度逼近理论极限斜率 **`-0.4000`**）。相比之下，固定过粗 $K=6$ 卡死在离散偏差 `0.0268` 下不去，固定过细 $K=80$ 的 `MLE` 在小样本 $M=200$ 遭受高达 `0.0939` 的严重二次坍塌遗憾。
@@ -205,7 +205,7 @@
 
 1. **小样本下不同 LCB 的真实差异（$M=400, N=64$）**：
    - `Uniform K=20`：`Standard-BoN = 0.6998`，`MLE = 0.6979`，`Laplace = 0.6979`，`Wilson-LCB = 0.6954`，而 **`Empirical-Bernstein LCB = 0.6770`**（下降 `-1.84%`）；
-   - `Quantile K=40`（每桶仅 10 条校准样本）：`Wilson-LCB = 0.6927`（超过 `MLE = 0.6925`），而 `Empirical-Bernstein LCB` 被惩罚项彻底压崩至 **`0.5181`**（几乎退化成 $N=1$ 随机水平 `0.5168`），与定理 6B 完全吻合。
+   - `Quantile K=40`（每桶仅 10 条校准样本）：`Wilson-LCB = 0.6927`（超过 `MLE = 0.6925`），而 `Empirical-Bernstein LCB` 被惩罚项压低至 **`0.5181`**（接近 $N=1$ 基准水平 `0.5168`），与定理 6B 一致。
 2. **跨 $M$ Minimax 分桶验证（`N=64`, 4,494 题 holdout）**：
    - 当 $M=200$ 时，固定过细分桶 `Fixed K=60 + MLE` 遭受“假状元”过拟合掉点至 **`0.6601`**（较 `Standard-BoN` `0.6998` 净损 **`-3.97%`**），即使加装 `Wilson-LCB`（`0.6842`）仍受过细方差惩罚拖累；而按定理 6 最优标度 $K^*(200) = 9$ 配 `Wilson-LCB` 直接达到 **`0.6955`**（较 `Fixed K=60 + MLE` 挽回 **`+3.53%`**）。随着 $M$ 增至 `400 -> 2,000 -> 15,000 -> 40,000`，$K^*(M)$ 自动由 `11 -> 19 -> 38 -> 54` 加密，`Opt K*(M) + Wilson-LCB` 稳步收敛至 `0.7000`。
 3. **离散可归并答案空间算法对比（4,494 验证题 × 25 次 MC，$N=64$）**：
@@ -214,7 +214,7 @@
 ### 6.3 实验 R3 & R4：MATH-500 (`Llama-3.2-1B/3B` + `RLHFlow-8B-PRM`) 多视图诊断与消融放大对比
 
 ![Real LLM MATH-500 Scaling](figures/real_llm_math500_scaling.png)
-*图 7（[real_llm_math500_scaling.png](figures/real_llm_math500_scaling.png)）：`MATH-500` 上 `Llama-3.2-1B / 3B` 与 `RLHFlow-8B-PRM` 实证：(a) 5-Fold 交叉验证（15,000 试验/点）各推理算法对比，`Calibrated-Weighted-BoN (Wilson-LCB)` 彻底扭转原生 BoN 的过优化停滞与坍塌；(b) `3B` 模型下四类 PRM 聚合视图（`Last`/`Min`/`Mean`/`Prod`）正/错样本相关性热力图与定理 5A `irreversible_collapse` 诊断框。*
+*图 7（[real_llm_math500_scaling.png](figures/real_llm_math500_scaling.png)）：`MATH-500` 上 `Llama-3.2-1B / 3B` 与 `RLHFlow-8B-PRM` 实证：(a) 5-Fold 交叉验证（15,000 次池内重抽样/点）各推理算法对比，`Calibrated-Weighted-BoN (Wilson-LCB)` 缓解了原生 BoN 的过优化停滞与坍塌；(b) `3B` 模型下四类 PRM 聚合视图（`Last`/`Min`/`Mean`/`Prod`）正/错样本相关性热力图与定理 5A `irreversible_collapse` 诊断框。*
 
 1. **R3 单视图尾部分析与定理 5A `irreversible_collapse` 实证诊断**：
    - 两个模型下的 `PRM-Last` 均表现出强烈异方差（`1B` $\hat{\kappa}=2.3436$，`3B` $\hat{\kappa}=2.4932$）：在 `1B` 上 `PRM-Last` 精确池 BoN 于 $N=128$ 达峰 `0.4223` 后于 $N=256$ 微跌至 `0.4217`；在 **`3B` 上于 $N=32$ 达峰 `0.5437` 后一路回撤至 $N=256$ 的 `0.5365`**（官方曲线亦在 $N=16$ 达峰 `0.580` 后回撤至 `0.574`）。同时 `1B` 的 `PRM-Min` 在 `95%-99%` 达后验 `0.8552` 后于 `99%-100%` 倒挂跌至 `0.8298`。
@@ -235,7 +235,7 @@
 | **`Llama-3.2-3B`** | **`Calibrated-Weighted-BoN (Wilson-LCB)`** | `0.4319` | `0.6023` | `0.6407` | `0.6494` | **`0.6520`** | **`+11.68%`** |
 
 > [!TIP]
-> 在真实推理数据上，即使在未针对具体模型调参、纯粹对 `RLHFlow-8B-PRM` 原始标量分做 5-Fold 离线分位数 `Wilson-LCB` 校准的条件下，**`Calibrated-Weighted-BoN (Wilson-LCB)` 在 `Llama-3.2-1B`（`N=256` 达 `52.80%`）和 `Llama-3.2-3B`（`N=256` 达 `65.20%`）上分别实现 `+10.72%` 与 `+11.68%` 的绝对 Pass@1 跃升**，全面超越无权 `Majority-Voting` 并彻底消除了原生 `PRM-Last` 在大 $N$ 下的停滞与退化。
+> 在真实推理数据上，即使在未针对具体模型调参、纯粹对 `RLHFlow-8B-PRM` 原始标量分做 5-Fold 离线分位数 `Wilson-LCB` 校准的条件下，**`Calibrated-Weighted-BoN (Wilson-LCB)` 在 `Llama-3.2-1B`（`N=256` 达 `52.80%`）和 `Llama-3.2-3B`（`N=256` 达 `65.20%`）上分别实现 `+10.72%` 与 `+11.68%` 的绝对 Pass@1 跃升**，显著超越无权 `Majority-Voting` 并消除原生 `PRM-Last` 在大 $N$ 下的停滞与退化。
 
 ---
 
@@ -260,7 +260,7 @@
 1. **修正最优分桶指数 $1/5$ vs 旧错误 $2/5$ 实测对照（基点 $M=500, K=12$，$N=50{,}000$，500 次重复）**：
    - 在 $M \in \{500, 5000, 5\times 10^4, 5\times 10^5, 5\times 10^6\}$ 扫描下，正确 $K^*(M) \propto (M/\ln M)^{1/5}$（从 `12 -> 63`）在 $M=5\times 10^5$ 与 $5\times 10^6$ 的遗憾分别为 **`0.00166`** 与 **`0.00067`**，双对数收敛斜率 **`-0.4618`**；而误用 $2/5$（盲扩至 $K=141 \to 332$）遗憾膨胀至 **`0.00194`** 与 **`0.00088`**（斜率 `-0.4237`），验证了 `1/5` 标度的绝对渐近优势。
 2. **严格非渐近 `KL-LCB` 与 `Empirical-Bernstein` 归零阈值（$M=400, K=40, q_{\sup}=0.4707$）**：
-   - 定理 6B 解析给出 $K=40$ 下 Bernstein 线性惩罚归零阈值为每桶 **`m_k = 37.57`**（此时每桶仅有 `10` 条样本），实测 `Empirical-Bernstein LCB` 彻底归零坍塌回随机基准 **`0.2500`**；而 **`KL-LCB = 0.4344`** 与 **`Wilson-LCB = 0.4343`** 稳健超越 `MLE = 0.4263`。
+   - 定理 6B 解析给出 $K=40$ 下 Bernstein 线性惩罚归零阈值为每桶 **`m_k = 37.57`**（此时每桶仅有 `10` 条样本），实测 `Empirical-Bernstein LCB` 归零回落至随机基准 **`0.2500`**；而 **`KL-LCB = 0.4344`** 与 **`Wilson-LCB = 0.4343`** 稳健超越 `MLE = 0.4263`。
 3. **完美校准峰值收敛主项比 $\frac{q^* - P_{\text{Cal-BoN}}(N)}{\frac{C}{2(f^*)^2} N^{-2}}$ 检验（定理 6C）**：
    - 高精度离散求积实测该比值随 $N$ 趋于无穷精准收敛至 `1.0000`：$N=200$ 时为 `0.9851`、$N=500$ 为 `0.9952`、$N=1{,}000$ 为 **`0.9996`**、$N=5{,}000$ 为 **`0.9995`**、$N=20{,}000$ 为 **`0.9997`**。
 
@@ -273,103 +273,126 @@
 
 ---
 
-## 8. V5 审稿级数学严格化重构与 9 项缺陷实证验证
+## 8. 数学严格化专项单元测试验证
 
-针对外部同行初审对 V4 证明稿提出的全部 9 处实质性数学漏洞与论文结构建议，V5 已在 [PROOF.md](../PROOF.md)、核心模块及 [test_v5_rigor.py](../tests/test_v5_rigor.py) 中完成全量修补与定量实测验证（9 项专项测试耗时 `0.86s` 全部通过）：
+针对定理 2–7 边界条件、构造性反例与数值一致性的基础检验模块位于 [test_v5_rigor.py](../tests/test_v5_rigor.py)（9 项测试全部通过）：
 
-| 修补序号 | 审稿指出漏洞与对应定理 | V5 数学修正方案摘要 | V5 定量验证核心观测值（`tests/test_v5_rigor.py`） |
+| 检验序号 | 对应定理与数学问题 | 验证配置与方案摘要 | 实测观测结果（`tests/test_v5_rigor.py`） |
 | :---: | :--- | :--- | :--- |
-| **1** | 定理 2B(1)：$C^0$ 与 $C^1$ 混用 | 拆分为 $C^1$ 连通闭子区间（中值定理）与纯 $C^0$ 双闭子区间并 $A=I_1 \cup I_2$ | 在 Laplace 尖点 $x_1=0.6$ 与 $x_2=1.5$ 邻域数值积分验证增量严格为负且趋近 $-w_1^*w_2^*\delta$ |
-| **2** | 定理 2C：偶对称不控四阶及高阶项 | 建立固定峰值高度机制（$\kappa\to 1^+, \Delta\mu=\sqrt{c_1(\kappa^2-1)}\sigma_1$）五步极值矩与单峰 argmin 证明；Padé 移入附录 A | $q_{\text{peak}} \in (0.76, 0.78)$ 有界，比值 $N^*_{\text{exact}}/N^*_0$ 在 $\kappa=1.01$ 处达 `0.5682` 逼近 $e^{-\gamma}\approx 0.5615$（误差 `<1.5%`） |
-| **3** | 定理 3：$\text{KL}/\chi^2$ 界遗漏 $\beta=0$ ($\text{PPV}=1$) | 限制前向 $\text{KL}/\chi^2$ 于 $\beta>0$；$\beta=0$ 单独给出 $\text{TV}$ 与有限反向 $\text{KL}=-\ln P_{\text{BoN}}(N)$ | `FPR=0, N=5` 测得 `ppv=1.0`、`tv_distance=0.27265`、`kl_forward=inf`、`kl_reverse=0.31835`（零除零错误） |
-| **4** | 定理 4B：未约束单高权错误诱饵 | 用各错类各自期望权 $\mu_{w,j}$ 取代总体 $\mu_{w,-}$；无穷尾桶利用 $w_{\max}p_{\text{tail}}$ 一致封顶 | 反例 `(p_1=0.15, w_1=0.95)` 旧判据误判一致，新接口精确报错 `margin=-0.0225` (`p_tail<0.06`) |
-| **5** | 定理 5A-II：$C_c^{\text{pdf}}$ 遗漏 $\gamma_c$ 因子 | 激活侧面求和产生 $\sum_{k\in I_c} w_{c,k}=\gamma_c$，补全 $C_c^{\text{pdf}} = \gamma_c C_c^{\text{sf}}$ | 2D 全激活 ($\gamma=1.1628, C^{\text{sf}}=0.2852, C^{\text{pdf}}=0.3317$) 于 $t=100$ 边界密度比落入 `[0.99, 1.01]` |
-| **6** | 定理 5B-II：负相关致 $\eta_c < 1/K$ 反例 | 一般正定 $R_c$ 改为 $\eta_c \in (0, 1]$（负相关可超独立加速）；仅非负相关经 Slepian 引理得 $[1/K, 1]$ | $R=[[1,-0.5],[-0.5,1]]$ 得 $\gamma=4.0, \eta=0.25<0.5$；20 组随机非负 SPD 满足 $\eta\in[1/K, 1]$ |
-| **7** | 定理 6B：“彻底消除篡位”宣称过强 | 明确覆盖 $\neq$ 全排序；转为三事件并界悲观安全底线 $\bar{q}_1 \ge \max_k(q_k-2r_k)$ 与高概率遗憾界 | A(0.90, 1/1)、B(0.60, 60/100)、C(0.10, 1/1) 下 `MLE=0.50` 被 C 篡位，`KL-LCB` 择 B（`0.60`）严格封杀 C 并守住底线 |
-| **8** | 定理 6C：缺失败项、分离假设与联合下界 | 加入全局唯一分离峰假设、$\delta=M^{-1}$ 失败项，并证全策略联合下界 $\Omega((\ln M/M)^{\frac{\beta}{2\beta+1}}+N^{-\beta})$ | 双等高分离峰遗憾在 $N=2000$ 精准缩为单峰的 $1/4$（验证分离假设必要性）；上下界相区切换精确校验 |
-| **9** | 定理 7B：$N=2$ 退化及异质 $p(X)$ 残差 | $N=2$ 归为纯秩规则天花板 $\max(P_{\text{Raw}}, 2\bar{p}-P_{\text{Raw}}, \bar{p})$；区分恒定 $p_0$ 与异质 $p(X)$ 残差 | $N=2$ 验证 `Anti=0.4310 == 2p-Raw`、纯秩上限 `< Oracle=0.5610`；异质先验实测残差漂移 `0.1843`（恒定先验 `<1e-12`） |
+| **1** | 定理 2B(1)：$C^0$ 与 $C^1$ 分离 | 拆分为 $C^1$ 连通闭子区间与纯 $C^0$ 双闭子区间并 $A=I_1 \cup I_2$ | 在 Laplace 尖点 $x_1=0.6$ 与 $x_2=1.5$ 邻域数值积分验证增量严格为负且趋近 $-w_1^*w_2^*\delta$ |
+| **2** | 定理 2C：固定峰值高度极值矩 | 在 $\kappa\to 1^+, \Delta\mu=\sqrt{c_1(\kappa^2-1)}\sigma_1$ 机制下验证比值趋近 $e^{-\gamma}$ | $q_{\text{peak}} \in (0.76, 0.78)$ 有界，比值 $N^*_{\text{exact}}/N^*_0$ 在 $\kappa=1.01$ 处达 `0.5682`（$e^{-\gamma}\approx 0.5615$） |
+| **3** | 定理 3：$\text{PPV}=1$ 边界散度分离 | $\beta>0$ 使用前向 $\text{KL}/\chi^2$；$\beta=0$ 使用 $\text{TV}$ 与有限反向 $\text{KL}=-\ln P_{\text{BoN}}(N)$ | `FPR=0, N=5` 测得 `ppv=1.0`、`tv_distance=0.27265`、`kl_forward=inf`、`kl_reverse=0.31835` |
+| **4** | 定理 4B：单高权错误诱饵与尾桶界 | 用各错类各自期望权 $\mu_{w,j}$ 取代总体均值；无穷尾桶以 $w_{\max}p_{\text{tail}}$ 封顶 | 反例 `(p_1=0.15, w_1=0.95)` 旧接口误报一致，新接口精确检出 `margin=-0.0225` (`p_tail<0.06`) |
+| **5** | 定理 5A-II：$C_c^{\text{pdf}} = \gamma_c C_c^{\text{sf}}$ | 激活侧面求和给出 $\gamma_c$ 密度前因子（退化零乘子扩充验证见第 11 节） | 2D 全激活 ($\gamma=1.1628, C^{\text{sf}}=0.2852, C^{\text{pdf}}=0.3317$) 于 $t=100$ 密度比落入 `[0.99, 1.01]` |
+| **6** | 定理 5B-II：负相关与 Slepian 充分界 | 一般正定 $R_c$ 给出 $\eta_c \in (0, 1]$；非负相关经 Slepian 充分得 $[1/K, 1]$ | $R=[[1,-0.5],[-0.5,1]]$ 得 $\gamma=4.0, \eta=0.25<0.5$；20 组随机非负 SPD 满足 $\eta\in[1/K, 1]$ |
+| **7** | 定理 6B：悲观保底 vs 非全排序 | 区分置信覆盖保证与全排序；验证稀疏桶封杀与安全底线 | A(0.90, 1/1)、B(0.60, 60/100)、C(0.10, 1/1) 下 `MLE=0.50` 被 C 拉低，`KL-LCB` 择 B（`0.60`） |
+| **8** | 定理 6C：双等高分离峰对比 | 比较单峰与双等高分离峰遗憾缩放因子 $2^{-\beta}$ | 双等高分离峰遗憾在 $N=2000$ 缩为单峰的 `1/4`；上下界相区参数切分精确一致 |
+| **9** | 定理 7B：$N=2$ 纯秩规则与先验残差 | $N=2$ 归为三类纯秩规则天花板；对比恒定 $p_0$ 与异质 $p(X)$ 残差 | $N=2$ 验证 `Anti=0.4310 == 2p-Raw`、纯秩上限 `< Oracle=0.5610`；异质先验实测漂移 `0.1843` |
 
 ---
 
 ## 9. Stage 2 跨领域大池、异构多 RM 与 7B–72B 实证验证（实验 S1–S4）
 
-在 V1–V5 与 V3 单域实证之上，Stage 2 基于 `scripts/run_stage2_experiments.py` 与 `scripts/plot_stage2_figures.py` 在 **5 个公开 HuggingFace 大规模真实评分基准**（累计 **1.10M+ 候选轨迹与 2.40M+ 条 RM/PRM 评分**）上系统检验了第二部分三大原创支柱（定理 5–7）在真实大模型与多家族 Reward Model 上的适用边界、失效机理与可复现增益，完整数据导出至 `stage2_real_results.json` 与 `stage2_summary.csv`。
+在合成与单域实证之上，Stage 2 基于 `scripts/run_stage2_experiments.py` 与 `scripts/plot_stage2_figures.py` 在 **5 个公开 HuggingFace 大规模真实评分基准**（累计池包含 1.10M+ 候选评分轨迹与 2.40M+ 条 RM/PRM 评分）上检验定理 5–7 在真实大模型上的行为边界与适用条件，完整数据导出至 `stage2_real_results.json` 与 `stage2_summary.csv`。
 
-| 实验编号 | 公开数据集 | 覆盖规模 | 检验核心理论 |
+> **统计推断单位说明**：尽管原始候选样本池与多裁判评分总数超过百万条，但在同一题目内部的候选样本与同一回答的多裁判评分存在聚类相关性，因此跨题目泛化检验的**独立统计单位为题目数 $P$**（如 S1a `P=1,855`、S2 `P=674`、S3 `P=2,798`、S4 `P=8,987`）。对于第 9.4 节异质性交叉评估，V7 已将全部误差棒切换为基于独立题目的 **500 次配对整群自助法（Paired Cluster Bootstrap）标准误与 95% 置信区间**，并将 `Hybrid-Adaptive` 的策略选择修正为**严格互不相交的 80%/20% 内部留出**。
+
+| 实验编号 | 公开数据集 | 独立题数 $P$（与候选池规模） | 检验核心理论 |
 | :---: | :--- | :--- | :--- |
-| **S1a** | `allenai/reward-bench-2-results` | `1,855–1,865` 题（`N=4`，含 `102` 题 `Ties` `N=11`），对比同源 4-RM 与 6-家族异构 RM（`8B–72B` + `DeBERTa`） | 定理 5A/5B（相关破局、`Logit-Stack` vs `GenEig`、弱模型污染）与定理 7 |
-| **S1b** | `allenai/reward-bench-results` | `2,985` 对齐偏好对（`Code=984`, `Math=447`, `Safety=740`, `Chat/Hard`），强/弱异构 RM 与 `DeBERTa` | 定理 5A/5B/5C（跨能力域与噪声污染下 `Min` / `Mean` / `Logit-Stack` 分离） |
-| **S2** | `OlympiadBench` (`Qwen2.5-7B` × `uPRM-70B / 32B`) | `674` 题 × `128` 候选 = `86,272` 条竞赛级 PRM 轨迹（双模型 × 4 视图：`Last/Min/Mean/Prod`） | 定理 4/5 跨规模 PRM 相关性退相干 + 大 $N=128$ 离散校准增益 |
-| **S3** | `Human-Centric-Machine-Learning/strategic-ttc-data` | `GPQA-Qwen7B/Llama8B`（`546×128`）、`GSM8K`（`1319×128`）、`AIME`（`933×128`），跨 3 域共 `2,798` 题 × `128` = `358,144` 条（`ArmoRM-8B`） | 定理 6（8 种 SOTA 校准器、$(M, N)$ 二维网格）与定理 7（真实跨域辛普森悖论逆转） |
-| **S4** | `nvidia/AceMath-RewardBench` | `8,987` 题 × `64` 候选 = `575,168` 条（`RM-A/B` 7 数学子域） | 定理 5 双同源 RM 诊断、定理 6 二维 $(M,N)$ 交叉、定理 7 `Hybrid` 跨子域防护 |
+| **S1a** | `allenai/reward-bench-2-results` | `1,855–1,865` 题（`N=4`，含 `102` 题 `Ties` `N=11`） | 定理 5A/5B（相关破局、`Logit-Stack` vs `GenEig`、弱模型污染）与定理 7 |
+| **S1b** | `allenai/reward-bench-results` | `2,985` 对齐偏好对（`Code=984`, `Math=447`, `Safety=740`） | 定理 5A/5B（跨能力域与噪声污染下 `Min` / `Mean` / `Logit-Stack` 分离） |
+| **S2** | `OlympiadBench` (`Qwen2.5-7B` × `uPRM-70B / 32B`) | `674` 题（`× 128` = `86,272` 条竞赛级 PRM 轨迹） | 定理 4/5 跨规模 PRM 退相干 + $N=128$ 离散校准增量与异质性 |
+| **S3** | `Human-Centric-Machine-Learning/strategic-ttc-data` | `2,798` 题（`GPQA/GSM8K/AIME` × `128` = `358,144` 条） | 定理 6（8 种 SOTA 校准器、$(M, N)$ 二维网格）与定理 7 跨域辛普森悖论 |
+| **S4** | `nvidia/AceMath-RewardBench` | `8,987` 题（`× 64` = `575,168` 条，`RM-A/B` 7 子域） | 定理 5 双同源 RM 诊断、定理 6 二维 $(M,N)$ 交叉、定理 7 `Hybrid` 跨子域 |
 
-### 9.1 实验 S1a & S1b：异构多 RM 相关性破局、跨家族融合边界与抗噪声污染（定理 5）
+### 9.1 实验 S1a & S1b：异构多 RM 相关性结构、融合边界与弱噪声污染（定理 5）
 
-5-Fold 严格题级交叉验证表明，真实大模型评分器族系结构直接决定定理 5 预测的相关系数位置：
-1. **同源 RM 极高错相关证实**：在 `RewardBench-2` 同源 `AllenAI` 4-RM（`AllenAI-8B/70B-RM`, `Tulu3-8B-DPO/RL`）上，错例相关性 $\bar{\rho}_0 = 0.909$、Copula null 相关 $\eta_0 = 0.928$，处于 `irreversible_collapse` 区间；在 `AceMath` 同源双 RM（`RM-A/B`）上同样测得 $\bar{\rho}_1 = 0.844,\ \bar{\rho}_0 = 0.886,\ \eta_0 = 0.943$（`RM-A=73.21%`, `RM-B=69.50%`, `Logit-Stack=72.98%`）。
-2. **跨家族异构多 RM 大幅压低相关性**：切换到 6 家族异构 RM（`Skywork-V2-Llama3.1-8B`, `WorldPM-72B`, `InternLM2-20B`, `Starling-34B`, `GRM-Gemma2-2B`, `Mistral-RAFT-7B`）后，`All` 上 $\bar{\rho}_0$ 降至 `0.636`（$\eta_0=0.644$），多候选 `Ties`（$N=11$）进一步降至 $\bar{\rho}_0 = 0.407$（$\eta_0=0.438$）；`RewardBench-1` 强异构 5-RM 全集（`all_5strong`）测得 $\bar{\rho}_1=0.405, \bar{\rho}_0=0.332, \eta_0=0.417$（$\kappa_{\text{eff}}=0.953 < 1$），数学子集 `math_prm_5strong` 达 $\bar{\rho}_0=0.238$（$\eta_0=0.352$）。
-3. **`GenEig-OptLinear` 有限样本 SNR 盲区与有监督 `Logit-Stack` 鲁棒胜出**：理论无约束广义特征值求解器 `GenEig-OptLinear` 仅最小化渐近方差比 $\mathbf{w}^\top \Sigma_0 \mathbf{w} / (\mathbf{w}^\top \Sigma_1 \mathbf{w})$ 而未约束有限 $N$ 信噪比 $\mathbf{w}^\top (\mu_1-\mu_0)$，在真实强弱混杂池中容易把高正/负权压向低方差弱裁判（如 RB2 上退化至 `45.14%`、AceMath 上 `57.59%`、RB1 Math 上 `57.05%`）；相反，联合建模均值差与协方差逆的交叉验证 `Logit-Stack` 在各异构池上表现极其稳健——在 `RB1 Code (5-RM)` 上达 **`97.97%`**（超越最强单 RM `InternLM2-20B` `96.54%` 达 `+1.43 pp`），在 `RB2 Ties` 达 `82.96%`（略超 `Skywork-V2` `82.44%`），在 `RB2 Hetero-6` 达 `86.06%`。
-4. **弱噪声模型注入对 `Min-Ensemble` 的脆弱性打击与防线**：向异构 5-RM / 6-RM 注入弱模型 `DeBERTa-v3-Large`（RB1 `59.53%`，RB2 `35.35%`）后，未保护的 `Min-Ensemble` 遭到高错概率拖累暴跌（`RB1 All`: `86.87% -> 80.45%`、`RB2 All`: `72.05% -> 68.17%`），`Calibrated-Min (KL-LCB)` 对单调失准略有缓释（RB2 `74.03%` vs `68.17%`），而 `Logit-Stack` 通过自动赋近零/负权完整免疫污染（`RB1 All+DeBERTa` 反升至 **`95.38%`**，超过最强单 RM `95.06%`）。
+5-Fold 题级交叉验证表明，评分器家族同源度决定条件相关结构：
+1. **同源 RM 高错相关**：在 `RewardBench-2` 同源 `AllenAI` 4-RM（`AllenAI-8B/70B-RM`, `Tulu3-8B-DPO/RL`）上，错例相关性 $\bar{\rho}_0 = 0.909$、Copula 尾部指标 $\eta_0 = 0.928$，处于 `irreversible_collapse` 区间；在 `AceMath` 同源双 RM（`RM-A/B`）上测得 $\bar{\rho}_1 = 0.844,\ \bar{\rho}_0 = 0.886,\ \eta_0 = 0.943$（`RM-A=73.21%`, `RM-B=69.50%`, `Logit-Stack=72.98%`）。
+2. **跨家族异构多 RM 降低相关性**：切换到 6 家族异构 RM（`Skywork-V2-Llama3.1-8B`, `WorldPM-72B`, `InternLM2-20B`, `Starling-34B`, `GRM-Gemma2-2B`, `Mistral-RAFT-7B`）后，`All` 上 $\bar{\rho}_0$ 降至 `0.636`（$\eta_0=0.644$），多候选 `Ties`（$N=11$）进一步降至 $\bar{\rho}_0 = 0.407$（$\eta_0=0.438$）；`RewardBench-1` 强异构 5-RM 全集（`all_5strong`）测得 $\bar{\rho}_1=0.405, \bar{\rho}_0=0.332, \eta_0=0.417$（$\kappa_{\text{eff}}=0.953 < 1$），数学子集 `math_prm_5strong` 达 $\bar{\rho}_0=0.238$（$\eta_0=0.352$）。
+3. **`GenEig-OptLinear` 有限样本 SNR 盲区与有监督 `Logit-Stack` 鲁棒表现**：无约束广义特征值求解器 `GenEig-OptLinear` 仅最小化渐近方差比而忽略均值信号强弱与估计误差，在强弱混杂池中易将权重赋给低方差弱裁判（`RB2 = 45.14%`、`AceMath = 57.59%`、`RB1 Math = 57.05%`）；相反，联合拟合一阶信号与相关结构的 `Logit-Stack` 在各异构池表现稳健——在 `RB1 Code (5-RM)` 上达 **`97.97%`**（高于最强单 RM `InternLM2-20B` `96.54%` `+1.43 pp`），在 `RB2 Ties` 达 `82.96%`，在 `RB2 Hetero-6` 达 `86.06%`。
+4. **弱噪声模型注入对 `Min-Ensemble` 的影响**：向异构 5-RM / 6-RM 注入弱模型 `DeBERTa-v3-Large`（RB1 `59.53%`，RB2 `35.35%`）后，未校准的 `Min-Ensemble` 受高错概率拖累明显下滑（`RB1 All`: `86.87% -> 80.45%`、`RB2 All`: `72.05% -> 68.17%`），`Calibrated-Min (KL-LCB)` 略有缓解（RB2 `74.03%` vs `68.17%`），而 `Logit-Stack` 自动抑制弱模型权重（`RB1 All+DeBERTa` 达 **`95.38%`**）。
 
-### 9.2 实验 S2：跨规模 70B vs 32B PRM 相关性退相干与竞赛数学校准实证（OlympiadBench, $N \le 128$）
+### 9.2 实验 S2：跨规模 70B vs 32B PRM 退相干与竞赛数学校准实证（OlympiadBench, $N \le 128$）
 
 在竞赛级 `OlympiadBench`（$P=674$，$128$ 候选/题）上同时考察跨模型尺寸（`uPRM-70B` vs `uPRM-32B`）与同模型多聚合视图（`Last/Min/Mean/Prod`）：
-- **跨规模显著降相关**：同一 `uPRM-70B` 的 4 种步骤聚合视图高度相关（$\bar{\rho}_1=0.711, \bar{\rho}_0=0.683, \eta_0=0.734$），而跨规模双模型 `70B-Last` vs `32B-Last` 将 $(\bar{\rho}_1, \bar{\rho}_0)$ 大幅压低至 **`(0.163, 0.222)`**（跨规模 4 视图均值 `(0.325, 0.333)`）；四视图混合下 `Logit-Stack` 于 $N=128$ 达到 **`44.36%`**（领先 `70B-Last` `41.54%` 达 **`+2.82 pp`**，领先 `70B-Min` `43.47%` 达 `+0.89 pp`）。同时在双模型 `70B vs 32B` 上 `GenEig-OptLinear` 同样因忽略 SNR 给出负权 `w*=[-0.215, 0.977]` 并退化至 `21.07%`。
-- **单模型长尾诊断与离散校准收益**：`uPRM-70B-Last` 与 `32B-Last` 均未观测到右尾反转（`99%-100%` 顶分位真实后验分别达 `0.9247` 与 `0.8737`，`tail_turn_down=False`），但在 $N=128$ 严格 5-Fold CV 下，`Calibrated-Weighted-BoN (Wilson-LCB)` 借助“先校准后按等价数学答案累加期望正确数”依然取得 **`47.33%`**，显著击败 `Majority-Voting`（`45.14%`, **`+2.19 pp`**）与 `Standard-BoN`（`41.54%`, **`+5.79 pp`**）。
+- **跨规模显著降相关**：同一 `uPRM-70B` 的 4 种步骤聚合视图高度相关（$\bar{\rho}_1=0.711, \bar{\rho}_0=0.683, \eta_0=0.734$），而跨规模双模型 `70B-Last` vs `32B-Last` 将 $(\bar{\rho}_1, \bar{\rho}_0)$ 压低至 **`(0.163, 0.222)`**（跨规模 4 视图均值 `(0.325, 0.333)`）；四视图混合下 `Logit-Stack` 于 $N=128$ 达到 **`44.36%`**（领先 `70B-Last` `41.54%` `+2.82 pp`），而忽略 SNR 的 `GenEig-OptLinear` 退化至 `21.07%`。
+- **单模型长尾诊断与离散校准收益**：`uPRM-70B-Last` 与 `32B-Last` 均未观测到右尾反转（`99%-100%` 顶分位真实后验分别达 `0.9247` 与 `0.8737`），在 $N=128$ 5-Fold CV 下，`Calibrated-Weighted-BoN (Wilson-LCB)` 借助“先校准后按等价数学答案累加期望正确数”取得 **`47.33%`**（对比 `Majority-Voting` `45.14%` 与 `Standard-BoN` `41.54%`）。
 
 ![Stage 2 Heterogeneous Multi-RM](figures/stage2_heterogeneous_multi_rm.png)
 
-### 9.3 实验 S3a & S4a：8 类 SOTA 校准器全量横评与二维 $(M, N)$ 联合标度律（定理 6）
+### 9.3 实验 S3a & S4a：8 类 SOTA 校准器横评与二维 $(M, N)$ 联合标度律（定理 6）
 
-在 `AceMath`（$N=64, M=400, K=20$）与 `GPQA-Qwen7B`（$N=128, M=300, K=16$）上横向对比 8 种主流校准器（`Standard-BoN`, `Platt Scaling`, `Isotonic PAVA`, `Histogram-MLE`, `Laplace-Smoothed`, `Empirical-Bernstein LCB`, `Wilson-LCB`, `KL-LCB`），并在二维 $(M, N)$ 网格验证定理 6 的联合标度率：
-1. **小/中样本 $M$ 下 `Empirical-Bernstein LCB` 坍塌实证**：因方差加倍惩罚项过保守，在真实有限校准集上 `Empirical-Bernstein LCB` 严重拖垮高分桶优势——`AceMath`（$M=400$）仅为 **`60.32%`**（比 `KL-LCB` `69.62%` 低 **`-9.30 pp`**）；`GPQA-7B`（$M=300$）退化至 **`21.64%`**（与 `N=1` 先验持平，显著低于 `KL-LCB` `28.99%`、`Wilson-LCB` `29.79%` 与 `Isotonic PAVA` `31.38%`）。
-2. **`Opt K* ∝ (M / ln M)^{1/5} + KL-LCB` 在低样本区间击败过细分桶 MLE**：在 `AceMath RM-B` 于 $M=100, N=64$ 下，过细固定分桶 `Fixed K=60 + MLE` 因高估小样本空/少样本高分桶噪点跌至 `63.82%`，而定理 6 `Opt 1/5 + KL-LCB` 稳定保持在 **`69.21%`**（**`+5.38 pp`**；跨 $N=2..64$ 全线领先 `+4.14..+5.38 pp`）；在 $M=200 / 400$ 时仍领先 `+3.46 pp / +0.95 pp`。仅当 $M$ 增至 $40{,}000$ 极充裕样本域时，`Fixed-60 + MLE` 方才回暖至 `70.01%`（略超 `69.88%`），在 `GPQA-7B`（$M=100$ vs $M=12000$：`25.42% vs 24.89%` 反转至 `28.95% vs 32.31%`）上亦呈现一致的 $(M, N)$ 联合权衡前沿。
+在 `AceMath`（$N=64, M=400, K=20$）与 `GPQA-Qwen7B`（$N=128, M=300, K=16$）上对比 8 种基线与 LCB 校准器，并在二维 $(M, N)$ 网格检验分桶标度：
+1. **小/中样本 $M$ 下 `Empirical-Bernstein LCB` 坍塌实证**：因通用 Hoeffding/Bernstein 线性惩罚项过宽，在真实有限校准集上 `Empirical-Bernstein LCB` 严重削弱高分桶区分度——`AceMath`（$M=400$）仅为 **`60.32%`**（低于 `KL-LCB` `69.62%` 达 `-9.30 pp`）；`GPQA-7B`（$M=300$）退化至 **`21.64%`**（接近 `N=1` 先验，低于 `KL-LCB` `28.99%`、`Wilson-LCB` `29.79%` 与 `Isotonic PAVA` `31.38%`）。
+2. **`Opt K* ∝ (M / ln M)^{1/5} + KL-LCB` 在低样本区间击败过细分桶 MLE**：在 `AceMath RM-B` 于 $M=100, N=64$ 下，过细固定分桶 `Fixed K=60 + MLE` 跌至 `63.82%`，而 `Opt 1/5 + KL-LCB` 保持 **`69.21%`**（`+5.38 pp`）；在 $M=200 / 400$ 时分别领先 `+3.46 pp / +0.95 pp`。仅当 $M$ 增至 $40{,}000$ 极充裕样本域时，`Fixed-60 + MLE` 回升至 `70.01%`（略超 `69.88%`）；`GPQA-7B` 上亦呈现一致的 $(M, N)$ 权衡前沿。
 
 ![Stage 2 Joint M-N and SOTA Calibrators](figures/stage2_joint_mn_and_sota_calibrators.png)
 
-### 9.4 实验 S3b & S4b：真实跨域辛普森悖论复现与 `Hybrid-Adaptive` 交叉边界（定理 7）
+### 9.4 实验 S3b & S4b：真实跨域辛普森悖论与真内部留出 `Hybrid` 统计检验（定理 7）
 
-Stage 2 在真实推理域混合基准上直接观测到了定理 7 所预言的“跨题分数域错位触发池化失效”及其反向交叉权衡：
-- **跨领域真题混池触发真实反向辛普森坍塌（`S3 GSM8K+GPQA+AIME`, $P=2,798, 358,144$ 候选）**：难度极高、真实先验仅 `2.15%` 的竞赛域 `AIME` 反而获得了 `ArmoRM-8B` 最高的原始均值分数（`0.2672`），而先验达 `90.73%` 的基础算数域 `GSM8K` 均分仅 `0.1643`（`GPQA` `p=19.72%`, 均分 `0.0840`），形成 `affine_shift_var = 3.4396`、`prior_shift_var = 0.1717`。合并三域后的全球池化实证后验曲线呈现剧烈倒 U 型（低至中分升至 `0.918` 后一路暴跌回高分段的 `0.086–0.124`，类间混杂项 `between_confounding` 负至 `-0.4232`）。由此导致盲目池化的 `Pooled-KL-LCB` 在 $N=128$ 时被错杀高分段，准确率从 `Standard-BoN`（`51.12%`）滑落至 `48.64%`；而题内标准化 `Within-Prompt-Z-KL-LCB` 与 `Hybrid-Adaptive-KL-LCB` 均将准确率拉回 **`49.86%`**（挽回 **`+1.22 pp`**）。同样地，在 `RewardBench-2`（`affine_shift_var = 0.2742, prior_shift_var = 0.0`）上，`Within-Prompt-Z` 与 `Hybrid` 亦以 `86.31%` 优于 `Pooled-KL-LCB`（`85.16%`, `+1.15 pp`）。
-- **低跨题偏移 + 强先验/绝对分差域验证定理 7 反向边界（`S4 AceMath 7-Strata` & `S2 OlympiadBench`）**：相反地，当不同难度子题的原始绝对分仍携带大量跨题难度信息且仿射偏移方差较小时（`AceMath RM-B`: `affine_shift_var=0.1335, prior_shift_var=0.0310`；`RM-A`: `0.0971 / 0.0310`；`OlympiadBench`: `0.0216 / 0.0057`），盲目 `Within-Prompt-Z` 强行抹平题间绝对位置会导致信息丢失，分别在极限算力处比 `Pooled-KL-LCB` 下降 **`-2.38 pp`**（`67.11% vs 69.49%`）、**`-2.68 pp`**（`70.55% vs 73.23%`）与 **`-7.89 pp`**（`33.66% vs 41.55%`）。而跨折自适应判别器 `Hybrid-Adaptive-KL-LCB` 在上述三组低偏移场景均精准锁定 `Pooled-KL-LCB` 分支（零损失：`69.49% / 73.23% / 41.55%`），而在强偏移场景（`S3 3-Domain`, `S1a RB2`）自动切换至 `Within-Prompt-Z` 分支，完整印证定理 7 的双向安全决策机制。
+为严格检验定理 7 跨题异质性边界并消除内部选择乐观偏差，V7 使用**真不相交 80%/20% 内部留出**重训 `Hybrid-Adaptive`，并在独立题目层级执行 **500 次 Paired Cluster Bootstrap**（全量详细数据见 [v7_rigor_verification.json](v7_rigor_verification.json)）：
+
+| 真实跨层数据集 | 独立题数 $P$ | 极限 $N$ | `Standard-BoN` ($\pm$SE) | `Pooled-KL-LCB` ($\pm$SE) | `Within-Prompt-Z` ($\pm$SE) | `Hybrid-Adaptive` ($\pm$SE) | `Hybrid vs Pooled` 配对差值 `[95% CI]` 与 $p$ 值 |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`S3 3-Domain` (GSM8K+GPQA+AIME)** | `2,798` | `128` | `0.5107 ± 0.0093` | `0.4865 ± 0.0090` | **`0.4990 ± 0.0090`** | **`0.4990 ± 0.0090`** | **`+1.25 pp`** `[+0.51, +2.10]` ($p < 0.002$) |
+| **`S1a RB2 Skywork` (6 域)** | `1,855` | `4` | `0.8726 ± 0.0077` | `0.8522 ± 0.0074` | **`0.8629 ± 0.0074`** | **`0.8629 ± 0.0074`** | **`+1.07 pp`** `[+0.36, +1.82]` ($p = 0.0040$) |
+| **`S4 AceMath 7-Strata` (`RM-B`)** | `8,987` | `64` | `0.6949 ± 0.0048` | **`0.6950 ± 0.0047`** | `0.6708 ± 0.0047` | **`0.6950 ± 0.0047`** | `0.00 pp`（拒用 Z 避免 `-2.42 pp`, $p<0.002$） |
+| **`S4 AceMath 7-Strata` (`RM-A`)** | `8,987` | `64` | `0.7320 ± 0.0050` | **`0.7323 ± 0.0049`** | `0.7052 ± 0.0048` | **`0.7323 ± 0.0049`** | `0.00 pp`（拒用 Z 避免 `-2.72 pp`, $p<0.002$） |
+| **`S2 OlympiadBench` (`70B-Last`)** | `674` | `128` | `0.4154 ± 0.0200` | **`0.4176 ± 0.0191`** | `0.3350 ± 0.0170` | **`0.4176 ± 0.0191`** | `0.00 pp`（拒用 Z 避免 `-8.26 pp`, $p<0.002$） |
+
+- **跨领域真题混池触发反向辛普森坍塌（`S3 3-Domain`）**：先验仅 `2.15%` 的高难竞赛域 `AIME` 获得 `ArmoRM-8B` 最高原始均值（`0.2672`），而先验 `90.73%` 的基础算术域 `GSM8K` 均分仅 `0.1643`（`GPQA` `p=19.72%`, 均分 `0.0840`），导致 `affine_shift_var = 3.4396`、`prior_shift_var = 0.1717`。合并后的池化实证后验在高分段跌至 `0.086–0.124`（类间混杂项负至 `-0.4232`），使 `Pooled-KL-LCB` 在 $N=128$ 滑落至 `0.4865 ± 0.0090`，而 `Within-Prompt-Z` 与无泄露内部留出选择的 `Hybrid-Adaptive` 均稳健挽回至 **`0.4990 ± 0.0090`**（配对 95% 题目级 bootstrap CI `[+0.51, +2.10] pp`, $p < 0.002$）。
+- **低跨题偏移 + 绝对分强信息域（`S4 AceMath`, `S2 OlympiadBench`）**：当题间仿射偏移较小（`affine_shift_var = 0.1335 / 0.0971 / 0.0216`）时，盲目使用 `Within-Prompt-Z` 抹除绝对分信号导致在全部三组基准上统计显著下降（分别净损 **`-2.42 pp`**, **`-2.72 pp`**, **`-8.26 pp`**，均 $p < 0.002$）；而采用**严格互不相交 80%/20% 内部留出**的 `Hybrid-Adaptive` 在上述三组低偏移域均一致选择 `Pooled` 分支并保持零损失。
 
 ![Stage 2 Real Simpson and Cross-Domain Heterogeneity](figures/stage2_real_simpson_and_cross_domain.png)
 
 ---
 
-## 10. V6 理论深度优化验证（定理 5A-III / 6C 零间隙 / 7C Z-空间自诱导坍塌）
+## 10. 多维理论升级数值验证（定理 5A-III / 定理 6C 等频检验 / 定理 7C）
 
-针对 Stage 2 实证暴露的三项理论机制盲区，V6 版本通过新增 `scripts/verify_v6_theory.py` 与 `tests/test_v6_theory.py`（结果导出至 `v6_theory_verification.json`）完成了对三大原创支柱全部升级命题的数值与真实数据定量核验：
+对应 [verify_v6_theory.py](../scripts/verify_v6_theory.py) 与 [test_v6_theory.py](../tests/test_v6_theory.py)（结果保存至 [v6_theory_verification.json](v6_theory_verification.json)）：
 
-### 10.1 定理 5A-III：S-Lemma 凸化帕累托光谱路径（`Safe-Fisher`）与 Bayes QDA 维度诅咒 $N^{-2/K}$
+### 10.1 定理 5A-III：$N=2$ 尾约束 `Safe-Fisher` 光谱路径与 Bayes QDA $N^{-2/K}$ 速率
 
-1. **有限 $N$ 信噪比与渐近抗坍塌帕累托前沿**：在耦合 3-Verifier 非对称高斯实例（$\lambda_{\min}=0.45<1,\ \kappa_{\text{Fisher}}=1.5066>1$）上验证光谱路径 $\mathbf{w}_\tau=(\Sigma_0-\tau\Sigma_1)^{-1}\Delta\boldsymbol{\mu}$ 的双单调性（全路径 `snr2_deriv <= 0`, `ratio_deriv <= 0`）：
-   - 无约束 `Fisher` ($\tau=-1$) 于 $N=2$ 处拥有最高 SNR（$\operatorname{SNR}_2^2=0.9484$, `37.46%`），但因 $\kappa=1.507>1$ 在 $N=4096$ 处坍塌至 **`28.99%`**；
-   - 无约束 `GenEig` ($\tau\uparrow\lambda_{\min}^-$) 在 $N=4096$ 处渐近升至 `99.67%`，但在 $N=2 / 8$ 损失严重（仅 `27.87% / 43.35%`）；
-   - 边界帕累托最优解 **`Safe-Fisher`**（$\tau^*=0.2843,\ \kappa_{\text{safe}}=1.0000,\ \operatorname{SNR}_2^2=0.6301$）全面兼得两端：在 $N=8$（**`58.63%`**）与 $N=64$（**`81.31%`**）处**同时击败 `Fisher`（`56.68% / 58.26%`）与 `GenEig`（`43.35% / 77.10%`）**，并在 $N=4096$ 处稳达 **`95.79%`**（领先坍塌的 `Fisher` 达 **`+66.80 pp`**）。
-   - 在正交退化算例（$d_{\min}=0,\ R_{\lim}>\kappa_{\max}^2=1$）上，`pareto_linear_ensemble_frontier` 精确给出 `degenerate_orthogonal_boundary` 边界混入解（$\tau^*=0.5000,\ \kappa_{\text{safe}}=1.0000$）。
-   - **真实 `RewardBench-2 (hetero6, P=1,723, N=4)` 5-Fold 对比**：`Best1 (Skywork)=89.55%`、`Fisher=88.28%`、`QDA=87.93%`、`Safe-Fisher (mean tau*=0.5636)=81.66%`、`GenEig=39.29%`——`Safe-Fisher` 与 `Fisher` 分别较忽略 SNR 的 `GenEig` 挽回 **`+42.37 pp`** 与 **`+48.99 pp`**。
-2. **不可逆相 $\Sigma_0\succ\Sigma_1$ 下 Bayes QDA 天花板单调性与 $N^{-2/K}$ 维度诅咒**：
-   - 在 $\Sigma_1=I_K, \Sigma_0=1.6^2 I_K, p=0.25$ 序列上，$K=1\to 2\to 3$ 闭式天花板 $q^*_{\text{Bayes}}$ 严格单调上升：**`0.3957` ($K=1$) $\to$ `0.5316` ($K=2$) $\to$ `0.6538` ($K=3$)**；
-   - 在大 $A_K$ 规格（$\Sigma_0=2.2^2 I_K, p=0.20$）上验证收敛率：
-     - **$K=1$**（$q^*=0.3988,\ A_1=1.3102$，$N^{-2}$ 速率）于 $N=[16, 64, 256, 1024]$ 下精确积分观测与解析比 $\frac{q^*-P_{\text{QDA}}(N)}{A_1 N^{-2}}$ 依次收敛为 **`0.8545 → 0.9566 → 0.9891 → 0.9998`**；
-     - **$K=2$**（$q^*=0.6244,\ A_2=0.6310$，$N^{-1}$ 维度诅咒速率）于 $N=[32, 64, 128]$ 上 `60,000` 次 MC 观测与解析比依次为 **`1.1654 / 1.0106 / 0.9530`**。
+1. **$N=2$ 信噪比与渐近抗坍塌帕累托权衡**：在耦合 3-Verifier 非对称高斯实例（$\lambda_{\min}=0.45<1,\ \kappa_{\text{Fisher}}=1.5066>1$）上检验光谱路径 $\mathbf{w}_\tau=(\Sigma_0-\tau\Sigma_1)^{-1}\Delta\boldsymbol{\mu}$：
+   - 无约束 `Fisher` ($\tau=-1$) 于 $N=2$ 处拥有最高 SNR（$\operatorname{SNR}_2^2=0.9484$, `37.46%`），但因 $\kappa=1.507>1$ 在 $N=4096$ 处坍塌至 `28.99%`；
+   - 无约束 `GenEig` ($\tau\uparrow\lambda_{\min}^-$) 在 $N=4096$ 达 `99.67%`，但在小 $N=2/8$ 表现较差（`27.87% / 43.35%`）；
+   - **`Safe-Fisher`**（$\tau^*=0.2843,\ \kappa_{\text{safe}}=1.0000,\ \operatorname{SNR}_2^2=0.6301$）满足 $N=2$ 约束最优并在 $N=8$（`58.63%`）与 $N=64$（`81.31%`）兼优于两端，$N=4096$ 稳达 `95.79%`。
+   - **真实 `RewardBench-2 (hetero6, P=1,723, N=4)` 5-Fold 对比揭示 $N>2$ 权衡边界**：`Best1 (Skywork)=89.55%`、`Fisher=88.28%`、`QDA=87.93%`、`Safe-Fisher (mean tau*=0.5636)=81.66%`、`GenEig=39.29%`——`Safe-Fisher` 相较忽略 SNR 的 `GenEig` 挽回 `+42.37 pp`，但相较无约束 `Fisher` 低 `-6.62 pp`，从实证上印证了 `Safe-Fisher` 优化的是带渐近尾约束的 $N=2$ SNR 而非 $N=4$ 等一般有限预算直接准确率。
+2. **不可逆相 $\Sigma_0\succ\Sigma_1$ 下 Bayes QDA 天花板单调性与 $N^{-2/K}$ 收敛**：
+   - 在 $\Sigma_1=I_K, \Sigma_0=1.6^2 I_K, p=0.25$ 序列上，闭式天花板 $q^*_{\text{Bayes}}$ 随 $K=1\to 2\to 3$ 单调上升：**`0.3957` ($K=1$) $\to$ `0.5316` ($K=2$) $\to$ `0.6538` ($K=3$)**；
+   - 在 $\Sigma_0=2.2^2 I_K, p=0.20$ 上：$K=1$（$N^{-2}$）在 $N=[16, 64, 256, 1024]$ 下精确积分观测与解析主项之比为 **`0.8545 / 0.9566 / 0.9891 / 0.9998`**；$K=2$（$N^{-1}$, 60k MC）在 $N=[32, 64, 128]$ 上之比为 **`1.1654 / 1.0106 / 0.9530`**。
 
-### 10.2 定理 6C（V6）：全平面零对数间隙 $N$-无关 Minimax 实证
+### 10.2 定理 6C：严格等频分桶下 $N$-无关 $K^*(M)$ vs 截断基线实证对照
 
-在 $M=50{,}000,\ N=8$ 的强离线、小预算区间上对比 V6 **$N$-无关**最优分桶 $K^*(M)=8$ 与 V5 旧截断策略 $K_{\text{comp}}=\lfloor N/(2\ln N)\rfloor=2$：`N-Agnostic (K=8) + KL-LCB` 准确率达 **`42.99%`**（在 $N=16/32$ 达 `43.17%`），严格击败被人工截断的 `K=2 + KL-LCB`（`38.33%`）达 **`+4.66 pp`**（$N=32$ 处 `+4.82 pp`），从机制上印证并消除了 $(\ln N)^\beta$ 证明松弛间隙。
+遵循定理 6C 等频分桶设定（在 `simulate_finite_calibration_scaling` 中显式传入 **`binning="quantile"`**，V7 已修复旧脚本默认 `uniform` 的错位），在 $M=50{,}000$ 处对比 $N$-无关最优等频分桶 $K^*(M)=8$ 与截断分桶 $K=2$：
+- 在 $N=8$ 时，**`N-Agnostic (K=8, quantile) + KL-LCB` 达 `44.44%`**，比截断基准 `K=2 + KL-LCB`（`37.95%`）高 **`+6.49 pp`**（在 $N=4, 16, 32$ 分别高 `+5.57 pp / +7.00 pp / +7.12 pp`）。
 
-### 10.3 定理 7C：题内 Z-Score 自诱导异方差与不可解题尾主导坍塌实证
+### 10.3 定理 7C：标准化 $Z^*$ 尾反转与有限池零成功可识别性说明
 
-1. **纯净同方差单调基底 ($\kappa=1,\ \Delta\mu=1.2$) 诱导坍塌复现**：设置仅含 `pi_0=55%` 不可解题（$p=0$）与 `45%` 内点可解题（$p=0.50$）之分层基准（`Standard-BoN` 渐近上界 `45.00%`）。仅因题内 Z-Score 归一化（不可解题单位方差 $1$ vs 可解题缩减方差 $v(0.5)=0.735<1$），在 $Z$ 空间即精确诱导出**自诱导异方差 $\kappa_Z = 1.153 > 1$**，使全局 $Z$ 后验于有限峰 $z^*=2.10$（$q_Z^*=0.429$）后向 $0$ 倒挂（$q_Z(z=9)=0.000101$，Oracle Z 校准渐近极限跌至 `42.74%`，较 `Standard-BoN` 自损 `-2.26 pp`）。端到端 `2,000` 题 MC 仿真上，`Standard-BoN`（`22.25% -> 43.90%`）与 `Pooled-KL-LCB`（`22.25% -> 43.75%`）随 $N=1..256$ 全程单调攀升，而 **`Within-Prompt-Z-KL-LCB` 于 $N=64$ 见顶（`41.90%`）后发生典型倒 U 坍塌**，至 $N=256$ 跌回 **`40.25%`**（落后 `Standard-BoN` **`-3.65 pp`**）；若注入 `pi_1=5%` 全对题与 `pi_0=15%` 不可解题，右尾亦精确趋近 $\frac{\pi_1}{\pi_0+\pi_1} = 0.250$。
-2. **真实 `AceMath RM-B` 全量 `8,987` 题（`575,168` 候选）Z-空间尾坍塌剖析**：全池不可解题占比 `frac(p=0)=14.22%`，按题内 Z-Score 合并后测得 $\operatorname{Var}(Z\mid Y=1)=0.6637$、$\operatorname{Var}(Z\mid Y=0)=1.0619$，**自诱导异方差比高达 $\kappa_Z = 1.2649$**；池化 $Z$ 后验于中上段 `[0.90, 1.17]` 达峰 **`72.79%`** 后在顶分位 `[1.92, 5.82]` 暴跌 **`-26.41 pp`** 至 **`46.38%`**（其中不可解题占比从 `12.59%` 飙升至 **`22.22%`**、平均题先验从 `0.5598` 骤降至 `0.2627`），精确解释了第 9.4 节中盲目 Z 标准化带来的性能倒退。
+1. **纯净单内点充分基准 ($\pi_0=0.55, p_1=0.50, \kappa=1, \Delta\mu=1.2$)**：该二层配置严格满足单内点充分条件（$\operatorname{Var}(m_1\mid Y=1)=0$），解析给出 $\kappa_Z = 1.153 > 1$、$q_Z(z=9)=0.000101$，Oracle $Z^*$ 校准渐近上限跌至 `42.74%`（低于 `Standard-BoN` `45.00%`）。在 `2,000` 题 MC 仿真上（使用样本 $Z_{i,N}$），`Within-Prompt-Z-KL-LCB` 在 $N=64$（`41.90%`）后在 $N=256$ 跌至 **`40.25%`**（同期 `Standard-BoN = 43.90%`、`Pooled-KL-LCB = 43.75%`）。
+2. **真实 `AceMath RM-B` 全量 `8,987` 题（`N=64` 候选）经验尾部与可识别性澄清**：
+   - 在有限候选池 $N=64$ 中，观测到全败比例（**经验零成功比例** `empirical_zero_success_rate_n64` = $\hat{p}_{64}(X) = 0$）为 **`14.22%`**。*严谨性说明*：有限抽样全错并不等价于结构性不可解 $p(X)=0$（例如即使真实 $p=0.01$，$(1-0.01)^{64} \approx 52.56\%$ 仍会观测到 64 连错），该统计量反映的是小概率难解题目聚集效应。
+   - 按题内样本 Z-Score 池化后实测 $\operatorname{Var}(Z\mid Y=1)=0.6637$、$\operatorname{Var}(Z\mid Y=0)=1.0619$（**$\kappa_Z = 1.2649$**）；经验后验 $q_Z$ 在中上段 `[0.90, 1.17]` 达峰 **`72.79%`** 后，在顶分位 `[1.92, 5.82]` 降至 **`46.38%`**（`-26.41 pp`，其中经验零成功题占比由 `12.59%` 升至 **`22.22%`**、平均经验先验 $\hat{p}_{64}$ 由 `0.5598` 降至 `0.2627`）。
 
 ---
 
-## 11. 结论与复现说明
+## 11. V7 审稿修补与反例回归定量验证（P0/P1 修复校验）
 
-本实验套件全面验证了 [PROOF.md](../PROOF.md)（**V6 深度优化版**）中的预备基础重构与三大原创核心支柱，并在 V3 与 Stage 2 共计 **7 组大型公开大模型/RM 真实数据基准** 上完成了端到端实证闭环：
-1. **理论严格性与 V5/V6 双重闭环**：V5 修复了审稿指出的全部 9 处数学细节与边界缺陷；V6 进一步补齐 **定理 5A-III**（凸化 S-Lemma `Safe-Fisher` 光谱路径与不可逆相 Bayes QDA $N^{-2/K}$ 维度诅咒）、**定理 6C 零间隙**（消除 $(\ln N)^\beta$ 间隙实现全平面 Minimax 紧致匹配）以及 **定理 7C**（不可解题诱导 $\kappa_Z>1$ 与 2×2 决策相图）；高精度积分与大规模 MC 误差全面吻合理论主项。
-2. **文献排雷与跨阶段真实大模型验证**：[RELATED_WORK.md](../RELATED_WORK.md) 系统核验了 12 篇 2022–2026 年代表性文献，明确划定第一部分预备重构与第二部分三大原创理论边界；V3 在 `AceMath-RewardBench` 与 `MATH-500` 验证了异方差坍塌、小 $M$ 过细校准退化与同源 PRM 不可逆诊断，并验证 `Calibrated-Weighted-BoN (Wilson-LCB)` 取得 `+10.72% / +11.68%` 真实增益；Stage 2 与 V6 进一步在 `RewardBench-1/2`、`OlympiadBench`（`uPRM-70B/32B`）、`strategic-ttc-data`（`GPQA/GSM8K/AIME`）与 `AceMath` 7 子域上证实了跨家族降相关边界、`Safe-Fisher`/`Logit-Stack` 对 `GenEig` SNR 盲区的大幅修正（`+42.37 pp / +48.99 pp`）、弱噪声 RM 对 `Min-Ensemble` 的破坏及抗污增益（最高 `97.97%`）、8-SOTA 校准器横评及 `Opt 1/5 + KL-LCB` 小样本增益（`+5.38 pp`）、以及真实跨域辛普森悖论、不可解题 Z 坍塌与 `Hybrid-Adaptive` 双向安全切换（对应论文图 1–10）。
-3. **测试与复现**：覆盖 V1–V6 与 Stage 2 全部 49 项单元测试（含 `test_v5_rigor.py` 9 项严格性检验、`test_stage2_real_eval.py` 4 项真实池单测与 `test_v6_theory.py` 6 项 V6 理论单测），一键复现命令参见项目根目录 [README.md](../README.md)。
+对应新增反例与统计回归验证脚本 [verify_v7_rigor.py](../scripts/verify_v7_rigor.py) 与测试套件 [test_v7_counterexamples.py](../tests/test_v7_counterexamples.py)，全部量化结果记录于 [v7_rigor_verification.json](v7_rigor_verification.json)：
+
+| 审稿修补项 | 检验构造 / 反例参数 | 定量验证核心观测值 | 修复状态说明 |
+| :--- | :--- | :--- | :--- |
+| **P0-01 窄峰反例与 $\mathcal{F}_\beta^{\text{unif}}$** | $S\sim\mathcal{N}(0,1),\ q_h(s)=\frac{1}{4}+\frac{1}{2}e^{-s^2/h^2},\ N=10$ | `h=1.0->0.0117`, `0.2->0.1442`, `0.05->0.3545`, `0.005->0.4827`（分析下界 `0.4823`）；所有 Fano 核统一满足 $\mathcal{F}_\beta^{\text{unif}}$；$c_\beta=\max(1,2^{\beta-1})$ 兼容 $\beta=0.5, 2.0$ | **已修复并验证** |
+| **P0-03 块对角负相关反例** | $4\times 4$ 块对角 $R=\operatorname{diag}(R_{-0.2}, R_{+0.5})$ | $\gamma(R)=23/6 \approx 3.8333$，$\eta=6/23 \approx 0.26087 > 1/4$ 且 `is_nonneg_corr0=False` | 已将非负相关降格为**充分条件** |
+| **P0-04 零乘子弱激活退化 QP/Copula** | $3\times 3$ SPD $R$, $\mathbf{u}^*=(1,1,1)^\top$, $\mathbf{w}=(1,1,0)^\top$ | `essential_set=[0,1]` (`\|I_+\|=2`), `weakly_active=[2]`, `orthant_prob=0.5`, `C_sf=1/(4*pi)=0.079577`；独立 2D 数值积分比（与修正阶 $t^{-2}e^{-t^2}$）于 $t=20/100/500$ 依次为 **`1.0508 → 1.0111 → 1.0022`**；Copula 对数指数判据精准判别 `-0.5 vs 0.0` | **核心公式与代码已修复并验证** |
+| **P0-05 $\kappa_Z < 1$ 反例与充分条件** | $\pi_0=0.01, p_1=0.1, p_2=0.2, \Delta=100, \sigma=1$；及单内点层 $\{0, p_1\}$ | 反例精准复现 `Var(Z\|1)=0.22255`, `Var(Z\|0)=0.02142`, **`kappa_Z=0.3103 < 1`**，然 `z_tail_value(9)=0.0` 仍反转；单内点层扫描下 `between_var_z_pos=0.0` 且 `kappa_Z > 1` 恒成立 | 已将 7C 聚焦**尾竞争反转**与**非循环充分条件** |
+| **§5.1 & §5.3 统计推断与测试去自证** | `real_eval.py` 题目级聚类 Bootstrap & 真不相交 80%/20% 留出 | $5\times$ 与 $40\times$ 重复抽样下 Bootstrap SE 比值维持 `O(1)` 量级；已移除硬编码自证式布尔返回值 | 详见第 9.4 节与 [test_v7_counterexamples.py](../tests/test_v7_counterexamples.py) |
+
+---
+
+## 12. 复现说明
+
+全量单元测试覆盖全部 9 个测试文件（共 54 项离线测试，包含 `test_v5_rigor.py` 9 项、`test_v6_theory.py` 6 项、`test_v7_counterexamples.py` 5 项及 `test_stage2_real_eval.py` 4 项），一键验证与复现指令见 [README.md](../README.md)。
+
 

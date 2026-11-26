@@ -19,7 +19,7 @@ from typing import Sequence, Union
 import numpy as np
 from numpy.polynomial.hermite import hermgauss
 from numpy.typing import ArrayLike
-from scipy import optimize, special
+from scipy import optimize, special, stats
 
 from tts_theory.theorems import (
     ContinuousVerifierSpec,
@@ -641,6 +641,9 @@ def solve_positive_quadrant_qp(cov: ArrayLike) -> dict:
             "gamma": float(w0[0]),
             "u_star": np.array([1.0], dtype=np.float64),
             "active_set": [0],
+            "essential_set": [0],
+            "weakly_active_set": [],
+            "inactive_set": [],
             "multipliers": w0,
             "strict_complementarity": True,
         }
@@ -721,17 +724,26 @@ def solve_positive_quadrant_qp(cov: ArrayLike) -> dict:
             w_num = inv_sig @ u_init
             best = (float(u_init @ w_num), active_set, u_init, np.maximum(w_num, 0.0))
 
-    gamma_opt, act_opt, u_opt, w_opt = best
-    act_arr = np.asarray(act_opt, dtype=np.int64)
-    inact_arr = np.asarray([j for j in range(k) if j not in act_opt], dtype=np.int64)
+    gamma_opt, _, u_opt, w_opt = best
+    ess_opt = [j for j in range(k) if float(w_opt[j]) > 1e-9]
+    if not ess_opt:
+        ess_opt = [int(np.argmax(w_opt))]
+    bnd_opt = sorted(np.flatnonzero(u_opt <= 1.0 + 1e-9).tolist())
+    weak_opt = [j for j in bnd_opt if j not in ess_opt]
+    inact_opt = [j for j in range(k) if j not in bnd_opt]
+    inact_arr = np.asarray(inact_opt, dtype=np.int64)
     strict_comp = bool(
-        np.all(w_opt[act_arr] > 1e-9)
+        len(weak_opt) == 0
+        and len(ess_opt) == len(bnd_opt)
         and (inact_arr.size == 0 or np.all(u_opt[inact_arr] > 1.0 + 1e-9))
     )
     return {
         "gamma": float(gamma_opt),
         "u_star": u_opt,
-        "active_set": act_opt,
+        "active_set": bnd_opt,
+        "essential_set": ess_opt,
+        "weakly_active_set": weak_opt,
+        "inactive_set": inact_opt,
         "multipliers": w_opt,
         "strict_complementarity": strict_comp,
     }
@@ -891,27 +903,55 @@ def _compute_active_tail_constants(
     cov_mat: np.ndarray,
     qp_res: dict,
 ) -> dict:
-    """在已解出的 Hashorva-Hüsler QP 结果上计算精确生存常数 C_sf 与密度常数 C_pdf = gamma * C_sf。"""
+    """在 Hashorva-Hüsler QP 结果上计算精确生存常数 C_sf 与密度常数 C_pdf = gamma * C_sf。
+
+    通过正乘子本质集 I_+ = {k : w_k > 0} 决定多项式主阶 t^{-|I_+|}，并完整处理
+    零乘子弱激活集 I_0 = {k : u_k^* = 1, w_k = 0} 贡献的条件正态正象限常数 P(W_{I_0} > 0)。
+    """
     gamma = float(qp_res["gamma"])
-    act = qp_res["active_set"]
+    bnd = qp_res["active_set"]
+    ess = qp_res.get("essential_set", bnd)
+    weak = qp_res.get("weakly_active_set", [])
     w = np.asarray(qp_res["multipliers"], dtype=np.float64)
     strict = bool(qp_res["strict_complementarity"])
-    idx = np.asarray(act, dtype=np.int64)
+    idx = np.asarray(ess, dtype=np.int64)
     sub_cov = cov_mat[np.ix_(idx, idx)]
     sub_mu = mu_arr[idx]
-    w_act = w[idx]
-    beta = float(w_act @ sub_mu)
+    w_ess = w[idx]
+    beta = float(w_ess @ sub_mu)
 
-    if strict and bool(np.all(w_act > 1e-12)):
+    if len(weak) == 0:
+        orthant_prob = 1.0
+    else:
+        i0_idx = np.asarray(weak, dtype=np.int64)
+        sub_cov_inv = np.linalg.inv(sub_cov)
+        cond_gain = cov_mat[np.ix_(i0_idx, idx)] @ sub_cov_inv
+        cond_mean = mu_arr[i0_idx] - cond_gain @ sub_mu
+        cond_cov = cov_mat[np.ix_(i0_idx, i0_idx)] - cond_gain @ cov_mat[np.ix_(idx, i0_idx)]
+        cond_cov = 0.5 * (cond_cov + cond_cov.T)
+        if len(weak) == 1:
+            sd0 = math.sqrt(max(float(cond_cov[0, 0]), 1e-30))
+            orthant_prob = float(special.ndtr(float(cond_mean[0]) / sd0))
+        else:
+            orthant_prob = float(
+                stats.multivariate_normal.cdf(
+                    cond_mean,
+                    mean=np.zeros(len(weak), dtype=np.float64),
+                    cov=cond_cov,
+                )
+            )
+
+    if bool(np.all(w_ess > 1e-12)) and orthant_prob > 0.0:
         sign, logdet = np.linalg.slogdet(sub_cov)
         if sign <= 0:
-            raise ValueError("激活集子协方差矩阵必须是严格正定的。")
+            raise ValueError("本质激活集子协方差矩阵必须是严格正定的。")
         quad_mu = float(sub_mu @ np.linalg.solve(sub_cov, sub_mu))
         log_c_sf = (
-            -0.5 * float(len(act)) * math.log(2.0 * math.pi)
+            -0.5 * float(len(ess)) * math.log(2.0 * math.pi)
             - 0.5 * float(logdet)
-            - float(np.sum(np.log(w_act)))
+            - float(np.sum(np.log(w_ess)))
             - 0.5 * quad_mu
+            + math.log(orthant_prob)
         )
         log_c_pdf = math.log(gamma) + log_c_sf
         c_sf: float | None = float(math.exp(log_c_sf))
@@ -927,8 +967,12 @@ def _compute_active_tail_constants(
     return {
         "gamma": gamma,
         "beta": beta,
-        "active_set": list(act),
-        "active_cardinality": len(act),
+        "active_set": list(bnd),
+        "active_cardinality": len(bnd),
+        "essential_set": list(ess),
+        "weakly_active_set": list(weak),
+        "essential_cardinality": len(ess),
+        "orthant_prob": float(orthant_prob),
         "multipliers": w,
         "strict_complementarity": strict,
         "c_sf": c_sf,
@@ -960,8 +1004,8 @@ def general_min_ensemble_qp_criterion(spec: GeneralGaussianMultiVerifierSpec) ->
     g0 = float(qp0["gamma"])
     beta1 = float(const1["beta"])
     beta0 = float(const0["beta"])
-    act1_len = len(qp1["active_set"])
-    act0_len = len(qp0["active_set"])
+    ess1_len = int(const1["essential_cardinality"])
+    ess0_len = int(const0["essential_cardinality"])
 
     kappa_min_eff = math.sqrt(g1 / g0)
     kappa_mean = math.sqrt(float(np.sum(spec.cov0_arr)) / float(np.sum(spec.cov1_arr)))
@@ -985,10 +1029,10 @@ def general_min_ensemble_qp_criterion(spec: GeneralGaussianMultiVerifierSpec) ->
             min_will_collapse = True
             regime = "min_collapse_linear_tiebreak"
     else:
-        if act0_len > act1_len:
+        if ess0_len > ess1_len:
             min_will_collapse = False
             regime = "min_consistent_log_tiebreak"
-        elif act0_len < act1_len:
+        elif ess0_len < ess1_len:
             min_will_collapse = True
             regime = "min_collapse_log_tiebreak"
         else:
@@ -1002,6 +1046,12 @@ def general_min_ensemble_qp_criterion(spec: GeneralGaussianMultiVerifierSpec) ->
         "beta0": beta0,
         "active_set1": qp1["active_set"],
         "active_set0": qp0["active_set"],
+        "essential_set1": const1["essential_set"],
+        "essential_set0": const0["essential_set"],
+        "weakly_active_set1": const1["weakly_active_set"],
+        "weakly_active_set0": const0["weakly_active_set"],
+        "orthant_prob1": const1["orthant_prob"],
+        "orthant_prob0": const0["orthant_prob"],
         "weights1": qp1["multipliers"],
         "weights0": qp0["multipliers"],
         "c_sf1": const1["c_sf"],
@@ -1072,7 +1122,9 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
 
     对一般正定相关矩阵 R_c，gamma_c(R_c) in [1, inf) 故剩余尾相依系数 eta_c = 1 / gamma_c(R_c)
     的精确取值范围为 (0, 1]（负相关可实现 eta_c < 1/K 的超独立加速衰减）；
-    当且仅当附加非负相关条件 (R_c)_{ij} >= 0 时，由 Slepian 引理限定 eta_c in [1/K, 1]。
+    非负相关条件 (R_c)_{ij} >= 0 为 Slepian 引理下界 eta_c in [1/K, 1] 的充分条件（非必要条件）。
+    对数因子阶 (gamma_c - |I_{+,c}|) / 2 由严格正乘子本质集 I_{+,c} = {k : w_{c,k} > 0} 决定，
+    对含零乘子弱激活边界的任意 SPD 相关矩阵均精确成立。
     """
     qp1 = solve_positive_quadrant_qp(spec.corr1_arr)
     qp0 = solve_positive_quadrant_qp(spec.corr0_arr)
@@ -1080,6 +1132,13 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
     eta1 = 1.0 / float(qp1["gamma"])
     eta0_indep = 1.0 / float(qp0["gamma"])
     eta0_eff = 1.0 if spec.epsilon_shared > 0.0 else eta0_indep
+
+    ess1 = qp1["essential_set"]
+    ess0 = qp0["essential_set"]
+    log_factor_exp1 = 0.5 * (float(qp1["gamma"]) - float(len(ess1)))
+    log_factor_exp0 = (
+        0.0 if spec.epsilon_shared > 0.0 else 0.5 * (float(qp0["gamma"]) - float(len(ess0)))
+    )
 
     is_nonneg_corr1 = bool(np.all(spec.corr1_arr >= -1e-12))
     is_nonneg_corr0 = bool(np.all(spec.corr0_arr >= -1e-12))
@@ -1099,6 +1158,12 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
             if spec.epsilon_shared > 0.0 and (spec.alpha0 / eta0_indep > eff_alpha1)
             else "min_collapse_copula"
         )
+    elif log_factor_exp0 < log_factor_exp1 - 1e-12:
+        min_will_collapse = False
+        regime = "min_consistent_copula_log_tiebreak"
+    elif log_factor_exp0 > log_factor_exp1 + 1e-12:
+        min_will_collapse = True
+        regime = "min_collapse_copula_log_tiebreak"
     else:
         min_will_collapse = False
         regime = "boundary_equal_effective_alpha"
@@ -1107,6 +1172,14 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
         "eta1": float(eta1),
         "eta0_copula": float(eta0_indep),
         "eta0_eff": float(eta0_eff),
+        "essential_set1": list(ess1),
+        "essential_set0": list(ess0),
+        "weakly_active_set1": list(qp1["weakly_active_set"]),
+        "weakly_active_set0": list(qp0["weakly_active_set"]),
+        "strict_complementarity1": bool(qp1["strict_complementarity"]),
+        "strict_complementarity0": bool(qp0["strict_complementarity"]),
+        "log_factor_exp1": float(log_factor_exp1),
+        "log_factor_exp0": float(log_factor_exp0),
         "is_nonneg_corr1": is_nonneg_corr1,
         "is_nonneg_corr0": is_nonneg_corr0,
         "eta0_below_independent_floor": eta0_below_independent_floor,
@@ -1243,12 +1316,13 @@ def pareto_linear_ensemble_frontier(
     kappa_max: float = 1.0,
     n_path_points: int = 25,
 ) -> dict:
-    """求解有限 N 信噪比与渐近尾方差比的凸化 S-Lemma 帕累托最优光谱路径（定理 5A-III）。
+    """求解 N=2 线性信噪比与渐近尾方差比权衡的凸化光谱路径（定理 5A-III）。
 
     在联合对角化坐标 P^T Sigma_1 P = I_K, P^T Sigma_0 P = diag(lams), d = P^T (mu1 - mu0) 下，
-    对于约束 max_{w != 0} (w^T dmu)^2 / (w^T (Sigma_1 + Sigma_0) w)  s.t.  kappa(w) <= kappa_max：
-    - tau = -1 对应 Fisher / Logit 方向（N=2 全局最优 SNR）；
-    - tau 沿 [-1, lambda_min) 递增对应严格帕累托前沿 w_tau = (Sigma_0 - tau Sigma_1)^{-1} dmu；
+    严格最大化 N=2 两样本信噪比 (w^T dmu)^2 / (w^T (Sigma_1 + Sigma_0) w) s.t. kappa(w) <= kappa_max
+    （注：一般有限 N > 2 下的精确 BoN 目标仍为顺序统计量积分，此处将 N=2 最优与渐近尾部约束合并权衡）：
+    - tau = -1 对应 Fisher / Logit N=2 全局最优方向（此处 d/dtau SNR_2^2 = 0）；
+    - tau 沿开区间 (-1, lambda_min) 递增对应严格单调帕累托权衡路径 w_tau = (Sigma_0 - tau Sigma_1)^{-1} dmu；
     - tau^* 处恰取到安全门槛 kappa(w_{tau^*}) = kappa_max（含正交退化边界精确闭式分支）。
     """
     if float(kappa_max) <= 0.0:

@@ -259,8 +259,9 @@ def bernstein_zero_collapse_threshold(
 ) -> float:
     """计算 Empirical-Bernstein LCB 发生全零截断崩溃的临界桶样本阈值（定理 6B）。
 
-    当桶样本数 m_k < 1 + (7 / (3 * q_peak)) * ln(2K / delta) 时，仅线性惩罚项就超过 q_peak，
-    导致哪怕观测到好桶也会被直接截断归零。
+    确定性形式针对经验桶均值 q_hat_k：当 m_k < 1 + (7 / (3 * q_hat_k)) * ln(2K / delta)
+    时线性惩罚项已超过 q_hat_k，LCB 被截断至 0。传入真均值或峰值上界 q_peak 时给出
+    对应的高概率或大样本参考阈值（在 1 - delta/K 单侧上偏事件外一致生效）。
     """
     k_int = int(n_bins)
     qp = float(q_peak)
@@ -398,8 +399,8 @@ def joint_calibration_compute_scaling(
     curvature_c: float = 1.0,
     q_peak: float = 0.5,
     delta: float = 0.05,
-) -> dict[str, float | int | str]:
-    """计算有限校准量 M 与有限推理预算 N 的联合最优分桶与相区判据（定理 6C）。"""
+) -> dict[str, float | int | str | bool]:
+    """计算有限校准量 M 与有限推理预算 N 的联合分桶与率指标（定理 6C，适用于一致正则类 F_beta^unif）。"""
     m_int = int(m_total)
     n_int = int(n_budget)
     beta_f = float(beta)
@@ -410,7 +411,7 @@ def joint_calibration_compute_scaling(
         m_int, curvature_c=curvature_c, q_peak=q_peak, delta=delta, beta=beta_f
     )
     k_cal = int(cal_info["k_opt_theory"])
-    # 保证有限预算 N 下能够以高概率命中顶部桶：1/K >= beta * ln(K) / N => K_comp ~ N / (beta * max(1, ln N))
+    # 旧式分桶截断基线：1/K >= beta * ln(K) / N => K_comp ~ N / (beta * max(1, ln N))
     log_n = max(1.0, math.log(float(max(2, n_int))))
     k_comp_float = max(2.0, float(n_int) / (beta_f * log_n))
     k_comp = max(2, int(math.floor(k_comp_float)))
@@ -445,7 +446,6 @@ def joint_calibration_compute_scaling(
         "regime": regime,
         "n_agnostic_k_opt": k_cal,
         "n_agnostic_upper_rate": minimax_lower_rate,
-        "n_agnostic_is_minimax_tight": True,
     }
 
 
@@ -457,12 +457,13 @@ def tight_joint_minimax_scaling(
     f_min: float = 0.25,
     eta_radius: float = 0.5,
 ) -> dict[str, float | int | bool]:
-    """计算 N-无关等频 KL-LCB 零对数间隙联合 Minimax 显式非渐近上界（定理 6C V6）。
+    """在一致正则分布类 F_beta^unif(C_1, f_min, eta_0) 上评估静态等频 KL-LCB 的非渐近上界（定理 6C）。
 
-    直接采用 N-无关最优分桶 K*(M) = floor(c_0 (M/ln M)^{1/(2*beta+1)}) 与 delta = 1/M，
-    利用“最近峰在线样本耦合 + 条件期望与 Pinsker 显式常数”证明全平面零对数间隙紧致上界：
-        R(M, N) = O((ln M / M)^{beta/(2*beta+1)} + N^{-beta})，
-    消去旧式截断分桶的 (ln N)^beta 对数间隙。
+    针对公共类参数 (curvature_c=C_1, f_min, eta_radius) 下的全体分布，使用 N-无关最优分桶
+    K*(M) 与 delta = 1/(3M) 三事件离线并界（上越界 + 桶计数不足 + Hoeffding 下侧偏差）：
+    - 采用通用幂次不等式 (a+b)^beta <= c_beta (a^beta + b^beta)，其中 c_beta = max(1, 2^{beta-1})
+      对一切 beta > 0 统一成立；
+    - 给出逐项显式上界与理论下界尺度之比，不再输出无验证意义的硬编码布尔标识。
     """
     m_int = int(m_total)
     n_int = int(n_budget)
@@ -479,12 +480,13 @@ def tight_joint_minimax_scaling(
     )
     k_opt = int(cal_info["k_opt_theory"])
 
+    c_beta = max(1.0, 2.0 ** (beta_f - 1.0))
     failure_term = delta_opt
     miss_neighborhood_term = float(math.exp(-eta_r * f_m * float(n_int)))
-    bin_bias_term = float(c_curv * (2.0 ** (beta_f - 1.0)) / ((float(k_opt) * f_m) ** beta_f))
+    bin_bias_term = float(c_curv * c_beta / ((float(k_opt) * f_m) ** beta_f))
     pinsker_lcb_term = float(2.0 * math.sqrt(float(k_opt) * math.log(3.0 * float(k_opt) * float(m_int)) / float(m_int)))
     online_nearest_term = float(
-        c_curv * math.gamma(beta_f + 1.0) / (2.0 * (f_m**beta_f)) * (float(n_int) ** (-beta_f))
+        c_curv * c_beta * math.gamma(beta_f + 1.0) / ((2.0 * f_m) ** beta_f) * (float(n_int) ** (-beta_f))
     )
     total_upper_bound = (
         failure_term
@@ -501,11 +503,13 @@ def tight_joint_minimax_scaling(
         float(m_int) >= 8.0 * float(k_opt) * math.log(3.0 * float(k_opt) * float(m_int))
         and float(k_opt) > 2.0 / (eta_r * f_m)
     )
+    upper_to_lower_rate_ratio = float(total_upper_bound / max(minimax_rate_lower, 1e-30))
 
     return {
         "m_total": m_int,
         "n_budget": n_int,
         "beta": beta_f,
+        "c_beta_factor": float(c_beta),
         "n_agnostic_k_opt": k_opt,
         "failure_term": failure_term,
         "miss_neighborhood_term": miss_neighborhood_term,
@@ -514,8 +518,8 @@ def tight_joint_minimax_scaling(
         "online_nearest_term": online_nearest_term,
         "total_upper_bound": float(total_upper_bound),
         "minimax_rate_lower": minimax_rate_lower,
+        "upper_to_lower_rate_ratio": upper_to_lower_rate_ratio,
         "uniform_bin_count_condition_holds": uniform_bin_count_condition_holds,
-        "is_zero_gap_minimax_tight": True,
     }
 
 

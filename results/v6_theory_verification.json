@@ -145,6 +145,7 @@
         "m_total": 1000,
         "n_budget": 4,
         "beta": 2.0,
+        "c_beta_factor": 2.0,
         "n_agnostic_k_opt": 4,
         "failure_term": 0.001,
         "miss_neighborhood_term": 0.22313016014842982,
@@ -153,13 +154,14 @@
         "online_nearest_term": 0.1,
         "total_upper_bound": 0.9117931463365907,
         "minimax_rate_lower": 0.1991893811772226,
-        "uniform_bin_count_condition_holds": 0,
-        "is_zero_gap_minimax_tight": 1
+        "upper_to_lower_rate_ratio": 4.577518846375405,
+        "uniform_bin_count_condition_holds": 0
       },
       {
         "m_total": 10000,
         "n_budget": 8,
         "beta": 2.0,
+        "c_beta_factor": 2.0,
         "n_agnostic_k_opt": 6,
         "failure_term": 0.0001,
         "miss_neighborhood_term": 0.049787068367863944,
@@ -168,13 +170,14 @@
         "online_nearest_term": 0.025,
         "total_upper_bound": 0.3341922390836183,
         "minimax_rate_lower": 0.07667845871368743,
-        "uniform_bin_count_condition_holds": 1,
-        "is_zero_gap_minimax_tight": 1
+        "upper_to_lower_rate_ratio": 4.358358849275664,
+        "uniform_bin_count_condition_holds": 1
       },
       {
         "m_total": 100000,
         "n_budget": 8,
         "beta": 2.0,
+        "c_beta_factor": 2.0,
         "n_agnostic_k_opt": 9,
         "failure_term": 1e-05,
         "miss_neighborhood_term": 0.049787068367863944,
@@ -183,13 +186,14 @@
         "online_nearest_term": 0.025,
         "total_upper_bound": 0.1873179961487574,
         "minimax_rate_lower": 0.04220006143718862,
-        "uniform_bin_count_condition_holds": 1,
-        "is_zero_gap_minimax_tight": 1
+        "upper_to_lower_rate_ratio": 4.438808612342072,
+        "uniform_bin_count_condition_holds": 1
       },
       {
         "m_total": 100000,
         "n_budget": 512,
         "beta": 2.0,
+        "c_beta_factor": 2.0,
         "n_agnostic_k_opt": 9,
         "failure_term": 1e-05,
         "miss_neighborhood_term": 4.125337404615185e-84,
@@ -198,8 +202,8 @@
         "online_nearest_term": 6.103515625e-06,
         "total_upper_bound": 0.11253703129651846,
         "minimax_rate_lower": 0.026578876134454248,
-        "uniform_bin_count_condition_holds": 1,
-        "is_zero_gap_minimax_tight": 1
+        "upper_to_lower_rate_ratio": 4.234077871736514,
+        "uniform_bin_count_condition_holds": 1
       }
     ],
     "simulation_m50k_small_n": {
@@ -213,18 +217,18 @@
       "k_n_agnostic": 8,
       "k_truncated_baseline": 2,
       "n_agnostic_kl_lcb_acc": [
-        0.3694711208963486,
-        0.41301529876336096,
-        0.42985993218881646,
-        0.43169443038147876,
-        0.43171270557018926
+        0.3792142155993957,
+        0.4257917429049681,
+        0.4444235417118175,
+        0.4500878793612178,
+        0.45132809755772807
       ],
       "truncated_kl_lcb_acc": [
-        0.3474063428960768,
-        0.37675791452976837,
-        0.38326769885717327,
-        0.38350295410730856,
-        0.3835032413182589
+        0.3400385580067677,
+        0.37006747651184263,
+        0.37945151354468004,
+        0.38007467225389074,
+        0.38007711597624744
       ]
     }
   },
@@ -232,8 +236,8 @@
     "analytic_no_trivial_pi1_zero": {
       "pi_0_unsolvable": 0.55,
       "pi_1_trivial": 0.0,
-      "var_z_pos": 0.7352941176470592,
-      "var_z_neg": 0.9776886821325828,
+      "var_z_pos": 0.7352941176470591,
+      "var_z_neg": 0.9776886821325826,
       "kappa_z": 1.1531073704127954,
       "z_peak": 2.1000000000000005,
       "q_z_peak": 0.42920650980742675,
@@ -246,7 +250,7 @@
     "analytic_with_trivial_pi1_005": {
       "pi_0_unsolvable": 0.15,
       "pi_1_trivial": 0.05,
-      "kappa_z": 1.0855307920167847,
+      "kappa_z": 1.0855307920167845,
       "z_tail_value": 0.2500000011128769,
       "z_tail_posterior_limit": 0.25,
       "z_induces_collapse": 1
@@ -300,7 +304,9 @@
     },
     "acemath_rm_b_zscore_tail": {
       "n_problems": 8987,
-      "frac_p0": 0.14220540781128296,
+      "candidate_pool_size": 64,
+      "empirical_zero_success_rate_n64": 0.14220540781128296,
+      "identifiability_note": "empirical_zero_success_rate_n64 measures finite-pool p_hat_64(X)=0 rather than structural unsolvability p(X)=0; e.g. at true p=0.01, (1-0.01)^64 ~ 52.56%.",
       "var_z_pos": 0.663669409392519,
       "var_z_neg": 1.0618882417818774,
       "kappa_z": 1.2649213005395807,
@@ -311,8 +317,8 @@
             -0.24993543060417892
           ],
           "q_z": 0.3068627834500385,
-          "frac_p0": 0.14073726349280863,
-          "mean_p": 0.4948293594909309
+          "frac_emp_zero_n64": 0.14073726349280863,
+          "mean_p_hat": 0.4948293594909309
         },
         {
           "z_range": [
@@ -320,8 +326,8 @@
             0.8998795458109569
           ],
           "q_z": 0.6250483554790561,
-          "frac_p0": 0.14740488640265662,
-          "mean_p": 0.5343660080541756
+          "frac_emp_zero_n64": 0.14740488640265662,
+          "mean_p_hat": 0.5343660080541756
         },
         {
           "z_range": [
@@ -329,8 +335,8 @@
             1.1657036982048359
           ],
           "q_z": 0.7279018012379164,
-          "frac_p0": 0.12593017595103972,
-          "mean_p": 0.5597586432470965
+          "frac_emp_zero_n64": 0.12593017595103972,
+          "mean_p_hat": 0.5597586432470965
         },
         {
           "z_range": [
@@ -338,8 +344,8 @@
             1.3976829729741227
           ],
           "q_z": 0.7188358426927223,
-          "frac_p0": 0.12521297680726035,
-          "mean_p": 0.5051712072742446
+          "frac_emp_zero_n64": 0.12521297680726035,
+          "mean_p_hat": 0.5051712072742446
         },
         {
           "z_range": [
@@ -347,8 +353,8 @@
             1.915241435803308
           ],
           "q_z": 0.6439779197635502,
-          "frac_p0": 0.14682487938453515,
-          "mean_p": 0.40885926022514885
+          "frac_emp_zero_n64": 0.14682487938453515,
+          "mean_p_hat": 0.40885926022514885
         },
         {
           "z_range": [
@@ -356,8 +362,8 @@
             5.820766571187038
           ],
           "q_z": 0.46383866481223923,
-          "frac_p0": 0.2221835883171071,
-          "mean_p": 0.26272383518776077
+          "frac_emp_zero_n64": 0.2221835883171071,
+          "mean_p_hat": 0.26272383518776077
         }
       ]
     }
