@@ -142,7 +142,7 @@ def plot_fig8_heterogeneous_multi_rm(data: dict[str, Any], out_path: Path) -> No
 
 
 def plot_fig9_joint_mn_and_sota(data: dict[str, Any], out_path: Path) -> None:
-    """绘制图 9：AceMath (M=400) 8 类 SOTA 校准器对比（左）+ 2D (M, N) 热力图与 N_match(M)（右）。"""
+    """绘制图 9：AceMath (M=400) 8 类 SOTA 校准器对比（左）+ 2D (M, N) 热力图与 N_balance(M)（右）。"""
     fig, axes = plt.subplots(1, 2, figsize=(14.6, 6.4))
     fig.subplots_adjust(wspace=0.25, bottom=0.28, top=0.86, left=0.065, right=0.96)
 
@@ -198,7 +198,8 @@ def plot_fig9_joint_mn_and_sota(data: dict[str, Any], out_path: Path) -> None:
         np.asarray(ace["grid_opt_1_5_kl"], dtype=float)
         - np.asarray(ace["grid_fixed60_mle"], dtype=float)
     ) * 100.0
-    n_match = np.asarray(ace["n_match_theory_by_m"], dtype=float)
+    # 读取 JSON 中的历史键名 n_match_theory_by_m，但在图表显示中统一使用 N_balance(M)
+    n_balance = np.asarray(ace["n_match_theory_by_m"], dtype=float)
 
     vmax = max(1.0, float(np.max(np.abs(diff_pp))))
     im = ax.imshow(diff_pp, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto", origin="lower")
@@ -207,8 +208,8 @@ def plot_fig9_joint_mn_and_sota(data: dict[str, Any], out_path: Path) -> None:
     ax.set_yticks(np.arange(m_grid.size))
     ax.set_yticklabels([f"{m:,}" for m in m_grid])
 
-    # 叠加 Theorem 6C 理论交界线 N_match(M)（沿单元格右边界阶梯线/淡化衬底绘制，确保热力图数字零遮挡）
-    x_match = np.interp(np.log2(np.clip(n_match, n_vals[0], n_vals[-1])), np.log2(n_vals), np.arange(n_vals.size))
+    # 叠加 Theorem 6C 理论交界线 N_balance(M)（沿单元格右边界阶梯线/淡化衬底绘制，确保热力图数字零遮挡）
+    x_bal = np.interp(np.log2(np.clip(n_balance, n_vals[0], n_vals[-1])), np.log2(n_vals), np.arange(n_vals.size))
     import matplotlib.patheffects as pe
 
     for i in range(m_grid.size):
@@ -222,14 +223,14 @@ def plot_fig9_joint_mn_and_sota(data: dict[str, Any], out_path: Path) -> None:
                 path_effects=[pe.withStroke(linewidth=2.8, foreground=halo_col, alpha=0.92)],
             )
 
-    # 在数字下方绘制 Theorem 6C 理论交界线 N_match(M)
+    # 在数字下方绘制 Theorem 6C 理论交界线 N_balance(M)
     ax.plot(
-        x_match, np.arange(m_grid.size),
+        x_bal, np.arange(m_grid.size),
         color="#111827", linestyle="--", linewidth=2.4, alpha=0.78, zorder=3,
-        label=r"Theorem 6C Boundary $N_{\mathrm{match}}(M)$",
+        label=r"Theorem 6C Boundary $N_{\mathrm{balance}}(M)$",
     )
     ax.plot(
-        x_match, np.arange(m_grid.size),
+        x_bal, np.arange(m_grid.size),
         color="#F59E0B", linestyle="--", linewidth=1.4, alpha=0.90, zorder=3.5,
     )
     cbar = fig.colorbar(im, ax=ax, pad=0.03)
@@ -237,7 +238,7 @@ def plot_fig9_joint_mn_and_sota(data: dict[str, Any], out_path: Path) -> None:
 
     ax.set_xlabel("Inference Sampling Budget $N$")
     ax.set_ylabel("Offline Calibration Samples $M$")
-    ax.set_title("(b) 2D $(M, N)$ Gain Surface (pp) & Theorem 6C $N_{\\mathrm{match}}(M)$")
+    ax.set_title("(b) 2D $(M, N)$ Gain Surface (pp) & Theorem 6C $N_{\\mathrm{balance}}(M)$")
     ax.legend(
         loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=1,
         frameon=True, facecolor="white", framealpha=0.95, edgecolor="#D5D8DC",
@@ -308,18 +309,18 @@ def plot_fig10_simpson_and_cross_domain(data: dict[str, Any], out_path: Path) ->
     _style_axis(ax)
     ax.axhline(0.0, color="#1F2937", linestyle="--", linewidth=1.4, label="Baseline: Pooled-KL-LCB (0.0 pp)")
 
-    def _plot_delta(het_blk: dict[str, Any], prefix: str, algo_key: str, col: str, mk: str, ls: str) -> None:
+    def _plot_delta(het_blk: dict[str, Any], prefix: str, algo_key: str, display_name: str, col: str, mk: str, ls: str) -> None:
         nv = np.asarray(het_blk["n_values"], dtype=float)
         base = np.asarray(het_blk["algorithms"]["Pooled-KL-LCB"]["accuracy"], dtype=float)
         targ = np.asarray(het_blk["algorithms"][algo_key]["accuracy"], dtype=float)
         delta_pp = (targ - base) * 100.0
         ax.plot(nv, delta_pp, color=col, marker=mk, linestyle=ls, linewidth=2.0, markersize=4.8,
-                label=f"{prefix}: {algo_key}", zorder=4)
+                label=f"{prefix}: {display_name}", zorder=4)
 
-    _plot_delta(het3, "S3 3-Domain", "Within-Prompt-Z-KL-LCB", "#0072B2", "o", "-")
-    _plot_delta(het3, "S3 3-Domain", "Hybrid-Adaptive-KL-LCB", "#56B4E9", "s", "--")
-    _plot_delta(het7, "S4 AceMath-7", "Within-Prompt-Z-KL-LCB", "#D55E00", "D", "-.")
-    _plot_delta(het7, "S4 AceMath-7", "Hybrid-Adaptive-KL-LCB", "#009E73", "^", "-")
+    _plot_delta(het3, "S3 3-Domain", "Within-Prompt-Z-KL-LCB", "Within-Prompt-Z-KL-LCB", "#0072B2", "o", "-")
+    _plot_delta(het3, "S3 3-Domain", "Hybrid-Adaptive-KL-LCB", "Hybrid-Fixed-KL-LCB", "#56B4E9", "s", "--")
+    _plot_delta(het7, "S4 AceMath-7", "Within-Prompt-Z-KL-LCB", "Within-Prompt-Z-KL-LCB", "#D55E00", "D", "-.")
+    _plot_delta(het7, "S4 AceMath-7", "Hybrid-Adaptive-KL-LCB", "Hybrid-Fixed-KL-LCB", "#009E73", "^", "-")
 
     ax.set_xscale("log", base=2)
     n_all = np.asarray(het3["n_values"], dtype=float)
@@ -327,7 +328,7 @@ def plot_fig10_simpson_and_cross_domain(data: dict[str, Any], out_path: Path) ->
     ax.set_xticklabels([str(int(v)) for v in n_all])
     ax.set_xlabel("Sampling Budget $N$ (log$_2$ scale)")
     ax.set_ylabel("Pass@1 Gain vs. Pooled-KL-LCB (pp)")
-    ax.set_title("(b) Theorem 7B Crossover: Within-Z vs. Hybrid-Adaptive Across Real Regimes")
+    ax.set_title("(b) Theorem 7B Crossover: Within-Z vs. Hybrid-Fixed Across Real Regimes")
     ax.legend(
         loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2,
         frameon=True, facecolor="white", framealpha=0.95, edgecolor="#D5D8DC",

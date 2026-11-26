@@ -2,11 +2,11 @@
 
 面向大语言模型（LLM）推理阶段的**测试时计算缩放（Test-Time Scaling, TTS；*Joint Calibration–Compute Limits of Test-Time Scaling: Minimax Theory and Verifier Selection*）**概率论证明与数值实证库，聚焦有限校准集与在线算力的联合 Minimax 极限、跨题异质性下的在线样本标准化边界与风险控制裁判选择，以及异构多裁判融合相变。
 
-> **架构概览（V9 主次聚焦与协议对齐版）**：
+> **架构概览（v1.0.0 顶会投稿优化版：NeurIPS 格式、全矢量图表与全量文献核验）**：
 > - **主定理 I：有限校准集 $M$ 与在线算力 $N$ 的联合 Minimax 理论（[PROOF.md](PROOF.md) §2：定理 6 & 命题 6.1）**：严格分离逐分布渐近类 $\mathcal{F}_\beta^{\text{sep}}$ 与一致正则分布类 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$；利用三事件离线并界与最近峰在线候选耦合，证明 $N$-无关等频 `KL-LCB` 在一切 $\beta > 0$ 上达到无 $(\ln N)^\beta$ 损失的双阶段解耦率 $\Theta\big((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta}\big)$，导出**校准—算力预算平衡律 $N_{\text{balance}}(M) \asymp (\frac{M}{\ln M})^{\frac{1}{2\beta+1}}$**；并通过样本分割顺序统计量紧 Cramér 间距界（命题 6.1，统计惩罚常数放大 $2$ 倍，在完整 $\delta=\frac{1}{4M}$ 下直接非空成立）在零额外无标签数据下覆盖一切 $\beta > 0$。
 > - **主定理 II：跨题异质性、在线样本标准化尾反转与风险控制门控（[PROOF.md](PROOF.md) §3：定理 7 & 命题 7.1）**：建立池化后验导数协方差分解及闭区间 `[3.5, 4.2]` 上的**无网格纯解析二层辛普森遮蔽证明**；给出 $N=2$ 样本 Z-Score 纯秩非严格界及双向序反转充要条件；严格跟踪原始分数仿射坐标变换 $S_i = b(X) + a(X)\tilde{S}_i$，证明含不可解题原子 $\pi_0>0$ 时在线样本标准化满足 $\max_{1\le i\le N}|Z_{i,N}-Z_i^*(X)| = O_p(\sqrt{(\ln N)/N}) \xrightarrow{p} 0$ 从而继承总体 $Z^*$ 的渐近准确率上限损失；同时给出覆盖全体 $N \ge 2$ 的三分支留出门控风险控制不等式与重拟合漂移分解（命题 7.1）。
 > - **补充理论：异构多裁判集成相变、帕累托光谱与 Copula 尾相依（[PROOF.md](PROOF.md) §4：定理 5）**：建立一般 $(\Sigma_1, \Sigma_0)$ 广义特征值负权逆转、渐近尾约束下 $N=2$ 线性 SNR 光谱路径 `Safe-Fisher`、不可逆相 $\Sigma_0\succ\Sigma_1$ 下 Bayes QDA 天花板与 $N^{-2/K}$ 收敛阶，以及含零乘子弱激活退化的多元高斯 `Min` 与 Gaussian-Copula + Student-$t$ 精确对数修正因子 $(\ln t)^{(\gamma_c - |I_{+,c}|)/2}$。
-> - **预备基础与文献溯源（[PROOF.md](PROOF.md) §1 & 附录 A–B；[RELATED_WORK.md](RELATED_WORK.md)）**：将单裁判预备定理 1–4 完整推导归入附录 A（附录 B 说明 `[1/1]` Padé 工程插值）；[RELATED_WORK.md](RELATED_WORK.md) 梳理 **22 篇**文献（含 Belitser et al. 2012、Minsker 2013 被动非参数回归最大化，Jin et al. 2021 离线悲观主义，Romano 1988，Bubeck et al. 2011，Hashorva & Hüsler 2003，Tankov 2016，Das & Fasen-Hartmann 2024 及 ICML 2025 TTS 文献），诚实界定 $N=\infty$ 重合面与有限候选池耦合增量。
+> - **预备基础与文献溯源（[PROOF.md](PROOF.md) §1 & 附录 A–B；[RELATED_WORK.md](RELATED_WORK.md)）**：将单裁判预备定理 1–4 完整推导归入附录 A（附录 B 说明 `[1/1]` Padé 工程插值）；[RELATED_WORK.md](RELATED_WORK.md) 梳理并逐篇外部核验全部 **27 篇**文献（含 Belitser et al. 2012、Minsker 2013 被动非参数回归最大化，Jin et al. 2021 离线悲观主义，Romano 1988，Bubeck et al. 2011，Hashorva & Hüsler 2003，Tankov 2016，Das & Fasen-Hartmann 2024 及 NeurIPS/ICML/ICLR TTS 文献），诚实界定 $N=\infty$ 重合面与有限候选池耦合增量。
 
 ---
 
@@ -33,8 +33,12 @@ test-time-scaling-theory/
 ├── RELATED_WORK.md                            # 27 篇 TTS 及被动/主动非参数极值估计、离线悲观、极值与统计检验文献审计
 ├── README.md                                  # 项目总览与复现指南
 ├── paper/
-│   ├── main.tex                               # 正式英文 LaTeX 预印本论文（统一符号、主文 §1–§7 + 完整数学附录 A–E）
-│   └── references.bib                         # 逐篇联网核验的 27 篇 BibTeX 参考文献库
+│   ├── main.tex                               # 正式英文 LaTeX 论文（NeurIPS 2025 样式、§1–§8、Algorithm 1–2 + 附录 A–F）
+│   ├── references.bib                         # 逐篇外部核验的 27 篇 BibTeX 参考文献库
+│   ├── neurips_2025.sty                       # NeurIPS 2025 标准排版样式（支持 [preprint] 与双盲匿名模式）
+│   ├── Makefile                               # 论文一键编译脚本
+│   ├── REVIEW_AUDIT.md                        # 多工具联合质量审计与修正对照备忘录
+│   └── figures/                               # 论文主图（fig1–fig4 矢量 .pdf 与 300 DPI .png）
 ├── src/tts_theory/
 │   ├── __init__.py                            # 统一公开 API 导出 (v1.0.0)
 │   ├── calibration_theory.py                  # 主定理 6：KL-LCB、一致正则类、平衡点 N_balance 与紧 Gamma 间距界
@@ -59,7 +63,9 @@ test-time-scaling-theory/
 │   ├── run_stage2_experiments.py / plot_stage2_figures.py
 │   ├── verify_v4_theory.py / verify_v6_theory.py / verify_v7_rigor.py / verify_v8_rigor.py
 │   ├── verify_v9_consolidation.py             # 三种分桶协议、单次划分 50/20/30 主表与受控尾污染压力测试
-│   └── verify_v10_release.py                  # 同 K 公平消融、四相分布漂移矩阵与自然坍塌子集审计 -> v10_release_verification.json
+│   ├── verify_v10_release.py                  # 同 K 公平消融、四相分布漂移矩阵与自然坍塌子集审计 -> v10_release_verification.json
+│   ├── plot_paper_figures.py                  # 生成论文主图 fig1–fig4（矢量 .pdf + 300 DPI .png）至 paper/figures/
+│   └── audit_paper_artifacts.py               # 论文静态 LaTeX、标签引用、数值防回归与跨文档一致性自动审计脚本
 └── results/
     ├── EXPERIMENT_REPORT.md                   # 全套实验与风险控制实证报告（含 §13 V9 与 §14 V10 收官核验）
     ├── v9_consolidation_verification.json / v10_release_verification.json
@@ -94,10 +100,12 @@ python scripts/verify_v8_rigor.py
 python scripts/verify_v9_consolidation.py
 python scripts/verify_v10_release.py
 
-# 4. 运行真实大模型/RM 全量实验与绘图（首次运行将缓存数据至 data/）
+# 4. 运行真实大模型/RM 全量实验、绘图与论文质量静态审计
 python scripts/run_real_llm_experiments.py
 python scripts/run_stage2_experiments.py --stages all
 python scripts/plot_stage2_figures.py
+python scripts/plot_paper_figures.py
+python scripts/audit_paper_artifacts.py
 ```
 
 ---
@@ -113,13 +121,16 @@ python scripts/plot_stage2_figures.py
 - **定理 7 & 命题 7.1（独立单次划分主检验、仿射不变性与同预算污染压力测试）**：
   - **互不相交单次划分 `50% Train / 20% Val / 30% Held-Out Test` + 零重拟合 `Hybrid-Fixed` + 双侧配对 $t$ 检验**：在跨领域混池 `S3 3-Domain`（$P_{\text{test}}=839, N=128$）与 `S1a RB2 Skywork`（$P_{\text{test}}=556, N=4$）上，`Hybrid-Fixed` 分别达到 **`51.59% ± 1.71%`** 与 **`85.92% ± 1.43%`**，统计显著优于受辛普森混杂拖累的 `Pooled-KL-LCB`（**`+2.41 pp`, $p_t = 0.0050$**；**`+1.83 pp`, $p_t = 0.0120$**）；在低偏移域 `AceMath RM-A/B`（$P_{\text{test}}=2{,}695$）与 `OlympiadBench`（$P_{\text{test}}=202$）上完全规避 `Within-Prompt-Z` 的统计显著下跌（`-2.91 pp / -3.17 pp / -9.16 pp`），与 `Pooled-KL-LCB` 无统计显著差异（$p_t \in [0.14, 0.68]$），经验重拟合漂移 $\hat{\varepsilon}_{\text{refit}} \in [0.0006, 0.0074]$。
   - **同等预算下的受控 Reward Hacking 压力测试**：在完全相同的 `AceMath RM-B` 50/20/30 划分与 $N=64$ 预算下，向错误轨迹注入 `6%` 右尾高分假阳性后，`Standard-BoN` 从 `63.06%`（$N=4$）坍塌至 **`28.65% ± 0.89%`**（$N=64$），而 `Hybrid-Fixed-KL-LCB` 自动切换至校准分支并保持 **`70.89% ± 0.86%`**（领先 `Standard-BoN` **`+42.24 pp`**, 95% CI `[+40.23, +44.11] pp`, $p_t < 10^{-300}$），清晰验证跨相区风险控制定位。
-  - **原始坐标仿射不变性与无网格解析遮蔽**：在极端题间仿射变换 $b=(-250, 1000), a=(0.25, 6.0)$ 下，定理 7C(4) 后验恒等式偏差 `3.28e-15`，在线样本 $Z_{i,N}$ 选择准确率差 `2.78e-16`；定理 7A(2) 在闭区间 `[3.5, 4.2]` 上纯解析下界给出 $q'_{\text{pool}}(s) \ge +7.04\times 10^{-3} > 0$。
+  - **原始坐标仿射不变性与无网格解析遮蔽**：在极端题间仿射变换 $b=(-250, 1000), a=(0.25, 6.0)$ 下，定理 7C(4) 后验恒等式偏差 `3.28e-15`，在线样本 $Z_{i,N}$ 选择准确率差 `2.78e-16`；定理 7A(2) 在闭区间 `[3.5, 4.2]` 上纯解析下界给出 $q'_{\text{pool}}(s) \ge +7.044\times 10^{-3} > +7.03\times 10^{-3} > 0$。
 - **定理 5（异构多裁判相关性破局与退化 QP/Copula 边界）**：
   - 真实 `RB2 hetero6`（$P=1{,}723, N=4$）上 `Fisher=88.28%`, `QDA=87.93%`, `Safe-Fisher=81.66%`, `GenEig=39.29%`（印证 `Safe-Fisher` 针对 $N=2$ 目标权衡）；3×3 零乘子弱激活矩阵（$|I_+|=2, I_0=\{3\}$）于 $t=500$ 处与修正阶 $\frac{1}{4\pi}t^{-2}e^{-t^2}$ 数值积分比达 **`1.0022`**。
 
 ### 4.2 代表性可视化结果
 
-#### (1) 异方差与 Reward Hacking 极值坍塌曲线
+#### (1) 论文核心理论框架与风险控制全景（Figure 1）
+![Paper Framework Overview](paper/figures/fig1_framework_overview.png)
+
+#### (2) 异方差与 Reward Hacking 极值坍塌曲线
 ![Scaling Collapse Curves](results/figures/scaling_collapse_curves.png)
 
 #### (2) Stage 2 实证：异构多 RM 相关性破局与 `OlympiadBench` PRM 校准增益

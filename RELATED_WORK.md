@@ -12,12 +12,12 @@
 | :---: | :--- | :--- | :--- |
 | **[1]** | Gao, Schulman, Hilton (2023) | *Scaling Laws for Reward Model Overoptimization*, ICML 2023 (`arXiv:2210.10760`) | 在合成金标 RM 下拟合 RLHF 与 BoN 的 Goodhart 过优化经验缩放律。 |
 | **[2]** | Coste, Anwar, Kirk, Krueger (2024) | *Reward Model Ensembles Help Mitigate Overoptimization*, ICLR 2024 (`arXiv:2310.02743`) | 实验验证多个 RM 的最坏情况集成（WCO / `min`）与不确定性惩罚可缓解过优化，未给出多裁判相变解析判据。 |
-| **[3]** | Ramé et al. (2024) | *WARM: On the Benefits of Weight Averaged Reward Models*, ICML 2024 (`arXiv:2401.12187`) | 提出权重平均奖励模型（WARM）提升多 RM 在分布偏移下的稳健性。 |
+| **[3]** | Ramé et al. (2024) | *WARM: On the Benefits of Weight Averaged Reward Models*, ICML 2024 (`PMLR 235:42048–42073`, `arXiv:2401.12187`) | 提出权重平均奖励模型（WARM）提升多 RM 在分布偏移下的稳健性。 |
 | **[4]** | Brown et al. (2024) | *Large Language Monkeys: Scaling Inference Compute with Repeated Sampling*, `arXiv:2407.21787` | 揭示重复采样覆盖率（Pass@$N$）对数线性增长与 Verifier 筛选瓶颈。 |
-| **[5]** | Snell, Lee, Xu, Kumar (2024) | *Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters*, `arXiv:2408.03314` | 研究过程验证器搜索与按问题难度分配测试时算力的策略。 |
+| **[5]** | Snell, Lee, Xu, Kumar (2025) | *Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters*, ICLR 2025 (Oral, `arXiv:2408.03314`) | 研究过程验证器搜索与按问题难度分配测试时算力的策略。 |
 | **[6]** | Stroebl, Kapoor, Narayanan (2024) | *The Limits of Inference Scaling Through Resampling*, `arXiv:2411.17501`（初版副标题含 *Inference Scaling fLaws*） | 分析二元不完美 Verifier（如有限覆盖单测）非零假阳性率对重采样上限的制约。 |
-| **[7]** | Huang et al. (2025) | *Is Best-of-N the Best of Them? Coverage, Scaling, and Optimality in Inference-Time Alignment*, ICML 2025 (`arXiv:2503.21878`, PMLR) | 以覆盖率刻画 BoN 在不完美 RM 下的退化，提出悲观拒绝采样 `InferenceTimePessimism` 保证计算单调性。 |
-| **[8]** | Dorner, Chen, Cruz, Yang (2025) | *ROC-n-reroll: How verifier imperfection affects test-time scaling*, `arXiv:2507.12399` | 证明实例级 BoN 与拒绝采样曲线受 Verifier ROC 几何支配，指出低算力表现无法外推高算力行为。 |
+| **[7]** | Huang et al. (2025) | *Is Best-of-N the Best of Them? Coverage, Scaling, and Optimality in Inference-Time Alignment*, ICML 2025 (`PMLR 267:25075–25126`, `arXiv:2503.21878`) | 以覆盖率刻画 BoN 在不完美 RM 下的退化，提出悲观拒绝采样 `InferenceTimePessimism` 保证计算单调性。 |
+| **[8]** | Dorner, Chen, Cruz, Yang (2026) | *ROC-n-reroll: How verifier imperfection affects test-time scaling*, ICLR 2026 (`arXiv:2507.12399`) | 证明实例级 BoN 与拒绝采样曲线受 Verifier ROC 几何支配，指出低算力表现无法外推高算力行为。 |
 | **[9]** | Tang, Chen, Cavallaro (2025) | *CarBoN: Calibrated Best-of-N Sampling Improves Test-time Reasoning*, `arXiv:2510.15674` | 提出两阶段推理采样与输入自适应温度/偏移校准框架 CarBoN。 |
 | **[10]** | Schweisthal, Wang, Deviyani, Feuerriegel, Frauen (2026) | *Efficient Best-of-N Policy Evaluation for Inference-Time Alignment*, `arXiv:2610.09250` | 提出无需生成似然的纯样本 Best-of-$N$ 策略评估与选择框架。 |
 | **[11]** | Yano, Ishibashi, Oyamada (2026) | *Tail Competition Explains Scaling in Best-of-N Sampling for Verifiable Problems*, NeurIPS 2026 (`arXiv:2610.19362`) | 基于单变量极值理论（EVT）分析单裁判正确/错误上尾竞争与高斯异方差坍塌。 |
@@ -100,6 +100,7 @@
   booktitle={Proceedings of the 41st International Conference on Machine Learning (ICML)},
   series={Proceedings of Machine Learning Research},
   volume={235},
+  pages={42048--42073},
   year={2024},
   eprint={2401.12187},
   archivePrefix={arXiv}
@@ -112,11 +113,14 @@
   year={2024}
 }
 
-@article{snell2024scaling,
+@inproceedings{snell2024scaling,
   title={Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters},
   author={Snell, Charlie and Lee, Jaehoon and Xu, Kelvin and Kumar, Aviral},
-  journal={arXiv preprint arXiv:2408.03314},
-  year={2024}
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2025},
+  note={Oral Presentation},
+  eprint={2408.03314},
+  archivePrefix={arXiv}
 }
 
 @article{stroebl2024inference,
@@ -131,16 +135,20 @@
   author={Huang, Audrey and Block, Adam and Liu, Qinghua and Jiang, Nan and Krishnamurthy, Akshay and Foster, Dylan J.},
   booktitle={Proceedings of the 42nd International Conference on Machine Learning (ICML)},
   series={Proceedings of Machine Learning Research},
+  volume={267},
+  pages={25075--25126},
   year={2025},
   eprint={2503.21878},
   archivePrefix={arXiv}
 }
 
-@article{dorner2025roc,
+@inproceedings{dorner2025roc,
   title={ROC-n-reroll: How verifier imperfection affects test-time scaling},
   author={Dorner, Florian E. and Chen, Yatong and Cruz, Andr{\'e} F. and Yang, Fanny},
-  journal={arXiv preprint arXiv:2507.12399},
-  year={2025}
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2026},
+  eprint={2507.12399},
+  archivePrefix={arXiv}
 }
 
 @article{tang2025carbon,
@@ -200,7 +208,8 @@
   volume={12},
   number={3},
   pages={221--232},
-  year={1985}
+  year={1985},
+  url={https://www.jstor.org/stable/4615991}
 }
 
 @article{romano1988weak,
@@ -263,7 +272,10 @@
   series={Proceedings of Machine Learning Research},
   volume={19},
   pages={359--376},
-  year={2011}
+  year={2011},
+  eprint={1102.2490},
+  archivePrefix={arXiv},
+  url={https://proceedings.mlr.press/v19/garivier11a.html}
 }
 
 @article{bubeck2011xarmed,
@@ -272,7 +284,8 @@
   journal={Journal of Machine Learning Research},
   volume={12},
   pages={1655--1695},
-  year={2011}
+  year={2011},
+  url={https://jmlr.org/papers/v12/bubeck11a.html}
 }
 
 @article{belitser2012optimal,
@@ -293,7 +306,8 @@
   series={Proceedings of Machine Learning Research},
   volume={30},
   pages={105--121},
-  year={2013}
+  year={2013},
+  url={https://proceedings.mlr.press/v30/Minsker13.html}
 }
 
 @article{tankov2016tails,
@@ -313,7 +327,10 @@
   series={Proceedings of Machine Learning Research},
   volume={139},
   pages={5084--5096},
-  year={2021}
+  year={2021},
+  eprint={2012.15085},
+  archivePrefix={arXiv},
+  url={https://proceedings.mlr.press/v139/jin21e.html}
 }
 
 @article{das2024heavy,
