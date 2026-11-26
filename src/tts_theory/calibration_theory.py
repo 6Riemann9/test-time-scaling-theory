@@ -449,6 +449,73 @@ def joint_calibration_compute_scaling(
     }
 
 
+def empirical_quantile_spacings_bounds(
+    m_total: int,
+    n_bins: int,
+    delta: float = 0.05,
+) -> dict[str, float | int | bool]:
+    """评估样本分割经验等频分桶的一致桶质量乘性浓缩界（定理 6C 命题，覆盖一切 beta > 0）。
+
+    将容量 M 的校准集平分为边界子集 D_{M_1}^{edge}（M_1 = floor(M/2)）与估计子集 D_{M_2}^{est}
+    （M_2 = M - M_1）。取顺序统计量下标 r_k = floor(k * (M_1 + 1) / K)，由连续 CDF 变换与
+    Rényi-Pyke 指数间距表示，真实桶质量满足：
+        pi_hat_k = U_{(r_k)} - U_{(r_{k-1})} =^d G_k / G_tot,
+    其中 G_k ~ Gamma(d_k, 1)（d_k = r_k - r_{k-1}），G_tot ~ Gamma(M_1 + 1, 1)。
+    对 Gamma(d, 1) 应用精确 Cramér-Chernoff 界：
+        P(G_k < 3/4 * d_k) <= exp(-psi_-(3/4) * d_k),   psi_-(3/4) = -1/4 - ln(3/4) > 1/27,
+        P(G_k > 4/3 * d_k) <= exp(-psi_+(4/3) * d_k),   psi_+(4/3) =  1/3 - ln(4/3) > 1/27,
+        P(G_tot notin [4/5*(M_1+1), 5/4*(M_1+1)]) <= 2 * exp(-(M_1 + 1) / 45).
+    当 M_1 + 1 >= 6*K 且 d_min >= 27 * ln(4*K / delta) 时（即 M = Omega(K * ln(K / delta))），
+    以至少 1 - delta 的概率对全体 k = 1, ..., K 同时成立：
+        1 / (2*K) <= pi_hat_k <= 35 / (18*K) < 2 / K.
+    相比之下，加性 DKW 界的相对误差阶 K * sqrt(ln(2/delta) / (2*M_1)) 在 0 < beta <= 0.5 时不趋于 0。
+    """
+    m_int = int(m_total)
+    k_int = int(n_bins)
+    delta_f = float(delta)
+    if m_int < 4 or k_int < 2 or not (0.0 < delta_f < 1.0):
+        raise ValueError("要求 m_total >= 4, n_bins >= 2 且 delta in (0, 1)")
+
+    m1 = m_int // 2
+    m2 = m_int - m1
+    r_idx = np.floor(np.arange(k_int + 1, dtype=np.float64) * float(m1 + 1) / float(k_int)).astype(np.int64)
+    d_spacings = np.diff(r_idx)
+    d_min = int(np.min(d_spacings))
+    d_max = int(np.max(d_spacings))
+
+    psi_lo = -0.25 - math.log(0.75)  # 0.03768207... > 1/27
+    psi_hi = (1.0 / 3.0) - math.log(4.0 / 3.0)  # 0.04565126... > 1/27
+    psi_tot_lo = -0.20 - math.log(0.80)  # 0.02314355... > 1/45
+    psi_tot_hi = 0.25 - math.log(1.25)  # 0.02685645... > 1/45
+
+    fail_prob_spacings = float(
+        np.sum(np.exp(-psi_lo * d_spacings) + np.exp(-psi_hi * d_spacings))
+        + math.exp(-psi_tot_lo * float(m1 + 1))
+        + math.exp(-psi_tot_hi * float(m1 + 1))
+    )
+    d_min_required = float(27.0 * math.log(4.0 * float(k_int) / delta_f))
+    spacings_condition_holds = bool((m1 + 1 >= 6 * k_int) and (float(d_min) >= d_min_required))
+
+    # 对比加性 DKW 相对误差上界：sup_k |pi_hat_k - 1/K| * K <= 2 * K * sqrt(ln(2/delta) / (2 * M_1))
+    dkw_rel_err = float(2.0 * float(k_int) * math.sqrt(math.log(2.0 / delta_f) / max(1.0, 2.0 * float(m1))))
+
+    return {
+        "m_total": m_int,
+        "m_edge": m1,
+        "m_est": m2,
+        "n_bins": k_int,
+        "d_min": d_min,
+        "d_max": d_max,
+        "d_min_required": d_min_required,
+        "spacings_failure_prob_upper": min(1.0, fail_prob_spacings),
+        "spacings_condition_holds": spacings_condition_holds,
+        "guaranteed_pi_lower_factor": 0.5,
+        "guaranteed_pi_upper_factor": 35.0 / 18.0,
+        "dkw_relative_error_bound": dkw_rel_err,
+        "dkw_non_vacuous": bool(dkw_rel_err < 0.5),
+    }
+
+
 def tight_joint_minimax_scaling(
     m_total: int,
     n_budget: int,
@@ -457,13 +524,14 @@ def tight_joint_minimax_scaling(
     f_min: float = 0.25,
     eta_radius: float = 0.5,
 ) -> dict[str, float | int | bool]:
-    """在一致正则分布类 F_beta^unif(C_1, f_min, eta_0) 上评估静态等频 KL-LCB 的非渐近上界（定理 6C）。
+    """在一致正则分布类 F_beta^unif(C_1, f_min, eta_0) 上评估等频 KL-LCB 的非渐近上界（定理 6C）。
 
     针对公共类参数 (curvature_c=C_1, f_min, eta_radius) 下的全体分布，使用 N-无关最优分桶
     K*(M) 与 delta = 1/(3M) 三事件离线并界（上越界 + 桶计数不足 + Hoeffding 下侧偏差）：
     - 采用通用幂次不等式 (a+b)^beta <= c_beta (a^beta + b^beta)，其中 c_beta = max(1, 2^{beta-1})
       对一切 beta > 0 统一成立；
-    - 给出逐项显式上界与理论下界尺度之比，不再输出无验证意义的硬编码布尔标识。
+    - 同时通过样本分割顺序统计量 Gamma 间距界（empirical_quantile_spacings_bounds）检验未知总体分位数下的
+      经验等频分桶条件 M_1 >= C * K * ln(K*M)（该条件对一切 beta > 0 均随 M 增大自动满足）。
     """
     m_int = int(m_total)
     n_int = int(n_budget)
@@ -503,6 +571,9 @@ def tight_joint_minimax_scaling(
         float(m_int) >= 8.0 * float(k_opt) * math.log(3.0 * float(k_opt) * float(m_int))
         and float(k_opt) > 2.0 / (eta_r * f_m)
     )
+    spacings_info = empirical_quantile_spacings_bounds(
+        m_total=m_int, n_bins=max(2, k_opt), delta=min(0.25, 1.0 / float(4 * m_int))
+    )
     upper_to_lower_rate_ratio = float(total_upper_bound / max(minimax_rate_lower, 1e-30))
 
     return {
@@ -520,6 +591,8 @@ def tight_joint_minimax_scaling(
         "minimax_rate_lower": minimax_rate_lower,
         "upper_to_lower_rate_ratio": upper_to_lower_rate_ratio,
         "uniform_bin_count_condition_holds": uniform_bin_count_condition_holds,
+        "spacings_sample_split_condition_holds": bool(spacings_info["spacings_condition_holds"]),
+        "dkw_relative_error_bound": float(spacings_info["dkw_relative_error_bound"]),
     }
 
 
@@ -614,6 +687,7 @@ __all__ = [
     "build_score_bins",
     "calibration_minimax_scaling",
     "compute_bin_calibrator_scores",
+    "empirical_quantile_spacings_bounds",
     "exact_conditional_bin_bon_accuracy",
     "joint_calibration_compute_scaling",
     "simulate_finite_calibration_scaling",

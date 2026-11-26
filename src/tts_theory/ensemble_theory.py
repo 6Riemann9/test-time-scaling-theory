@@ -1120,12 +1120,16 @@ class GaussianCopulaHeavyTailSpec:
 def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> dict:
     """判定 Gaussian-Copula + Student-t 重尾模型下剩余尾相依系数与统一相界（定理 5B-II）。
 
-    对一般正定相关矩阵 R_c，gamma_c(R_c) in [1, inf) 故剩余尾相依系数 eta_c = 1 / gamma_c(R_c)
-    的精确取值范围为 (0, 1]（负相关可实现 eta_c < 1/K 的超独立加速衰减）；
-    非负相关条件 (R_c)_{ij} >= 0 为 Slepian 引理下界 eta_c in [1/K, 1] 的充分条件（非必要条件）。
+    剩余尾相依系数 eta_c = 1 / gamma_c(R_c) 的精确边界分类：
+    1. K = 1：gamma_c = 1，故 eta_c = 1；
+    2. K >= 2 且 R_c 严格正定（R_c > 0）：任意两维主子块满足 |(R_c)_{12}| < 1，由 Schur 补单调性有
+       gamma_c(R_c) >= 2 / (1 + (R_c)_{12}) > 1，故 eta_c 严格位于开区间 (0, 1) 内（负相关可实现 eta_c < 1/K）；
+    3. K >= 2、R_c > 0 且逐元非负 (R_c)_{ij} >= 0：eta_c 位于半开区间 [1/K, 1)（非负相关为 >= 1/K 的充分非必要条件）；
+    4. 存在同源上尾漏洞 epsilon_shared > 0（或奇异完全共单调极限 rho_{ij} -> 1^-）：有效系数退化为 eta_{0,eff} = 1。
     对数因子阶 (gamma_c - |I_{+,c}|) / 2 由严格正乘子本质集 I_{+,c} = {k : w_{c,k} > 0} 决定，
-    对含零乘子弱激活边界的任意 SPD 相关矩阵均精确成立。
+    对含零乘子弱激活边界的任意 SPD 相关矩阵均成立。
     """
+    k_dim = int(spec.num_verifiers)
     qp1 = solve_positive_quadrant_qp(spec.corr1_arr)
     qp0 = solve_positive_quadrant_qp(spec.corr0_arr)
 
@@ -1142,7 +1146,16 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
 
     is_nonneg_corr1 = bool(np.all(spec.corr1_arr >= -1e-12))
     is_nonneg_corr0 = bool(np.all(spec.corr0_arr >= -1e-12))
-    eta0_below_independent_floor = bool(eta0_indep < 1.0 / float(spec.num_verifiers) - 1e-12)
+    eta0_below_independent_floor = bool(eta0_indep < 1.0 / float(k_dim) - 1e-12)
+    eta_strictly_below_one = bool(k_dim >= 2 and eta1 < 1.0 - 1e-12 and eta0_indep < 1.0 - 1e-12)
+    if k_dim == 1:
+        eta0_boundary_class = "single_verifier_eta_eq_1"
+    elif spec.epsilon_shared > 0.0:
+        eta0_boundary_class = "shared_tail_eta_eff_eq_1"
+    elif is_nonneg_corr0:
+        eta0_boundary_class = "spd_nonneg_interval_[1/K,1)"
+    else:
+        eta0_boundary_class = "spd_signed_open_(0,1)"
 
     eff_alpha1 = float(spec.alpha1) / eta1
     eff_alpha0_min = float(spec.alpha0) / eta0_eff
@@ -1172,6 +1185,8 @@ def gaussian_copula_heavy_tail_criterion(spec: GaussianCopulaHeavyTailSpec) -> d
         "eta1": float(eta1),
         "eta0_copula": float(eta0_indep),
         "eta0_eff": float(eta0_eff),
+        "eta_strictly_below_one": eta_strictly_below_one,
+        "eta0_boundary_class": eta0_boundary_class,
         "essential_set1": list(ess1),
         "essential_set0": list(ess0),
         "weakly_active_set1": list(qp1["weakly_active_set"]),

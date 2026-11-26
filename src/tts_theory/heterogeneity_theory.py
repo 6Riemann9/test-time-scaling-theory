@@ -442,6 +442,7 @@ def diagnose_within_prompt_residual(spec: PromptHeterogeneitySpec) -> dict:
     anti_bon_n2 = float(2.0 * mean_prior_p - raw_bon_n2)
     rank_only_n2_ceiling = float(max(raw_bon_n2, anti_bon_n2, mean_prior_p))
     oracle_cal_n2 = float(spec.exact_within_prompt_oracle_calibrated_bon([2])[0])
+    rank_vs_oracle_n2_gap = float(max(0.0, oracle_cal_n2 - rank_only_n2_ceiling))
 
     return {
         "is_constant_prior": is_constant_prior,
@@ -457,6 +458,8 @@ def diagnose_within_prompt_residual(spec: PromptHeterogeneitySpec) -> dict:
         "anti_bon_n2": anti_bon_n2,
         "rank_only_n2_ceiling": rank_only_n2_ceiling,
         "oracle_cal_n2": oracle_cal_n2,
+        "rank_vs_oracle_n2_gap": rank_vs_oracle_n2_gap,
+        "strict_gap_over_rank_n2": bool(rank_vs_oracle_n2_gap > 1e-10),
     }
 
 
@@ -681,6 +684,137 @@ def simulate_zscore_induced_collapse(
     }
 
 
+def verify_sample_zscore_extremal_convergence(
+    prompt_weights: ArrayLike,
+    prompt_p: ArrayLike,
+    n_values: Sequence[int] | np.ndarray = (16, 64, 256, 1024),
+    mu1_base: float = 1.5,
+    sigma1_base: float = 1.0,
+    mu0_base: float = 0.0,
+    sigma0_base: float = 1.0,
+    n_eval_prompts: int = 3_000,
+    seed: int = 42,
+) -> dict:
+    """定量验证在线样本题内标准化 Z_{i,N} 对总体 Z_i^*(X) 的一致极值收敛与渐近上限损失（定理 7C(4)）。
+
+    对任意预算 N >= 2：
+    1. 验证极值偏差上确界 Delta_N(X) := max_{1<=i<=N} |Z_{i,N} - Z_i^*(X)| 满足 O_p(sqrt((ln N) / N))；
+    2. 精确评估真实池化后验函数 q_{pool, Z^*}(.) 分别作用于总体 Z_i^*(X) 与在线样本 Z_{i,N} 时
+       的选择准确率，验证 lim_{N->inf} P_{Sample-Z-Cal}^{oracle}(N) 收敛至理论渐近上限 (< 1 - pi_0)。
+    """
+    w = np.asarray(prompt_weights, dtype=np.float64).ravel()
+    p_arr = np.asarray(prompt_p, dtype=np.float64).ravel()
+    if w.size == 0 or p_arr.shape != w.shape or np.any(w <= 0.0):
+        raise ValueError("prompt_weights 与 prompt_p 必须为非空等长正权数组")
+    w = w / float(np.sum(w))
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    if n_arr.ndim != 1 or n_arr.size == 0 or np.any(n_arr < 2):
+        raise ValueError("n_values 必须为 >= 2 的整数序列")
+
+    diag = diagnose_zscore_induced_collapse(
+        prompt_weights=w,
+        prompt_p=p_arr,
+        mu1_base=mu1_base,
+        sigma1_base=sigma1_base,
+        mu0_base=mu0_base,
+        sigma0_base=sigma0_base,
+    )
+    s1 = float(sigma1_base)
+    s0 = float(sigma0_base)
+    dmu = float(mu1_base) - float(mu0_base)
+    mu_tilde = float(mu0_base) + p_arr * dmu
+    std_tilde = np.sqrt(
+        p_arr * (s1 * s1) + (1.0 - p_arr) * (s0 * s0) + p_arr * (1.0 - p_arr) * (dmu * dmu)
+    )
+    m1_g = (float(mu1_base) - mu_tilde) / std_tilde
+    sd1_g = s1 / std_tilde
+    m0_g = (float(mu0_base) - mu_tilde) / std_tilde
+    sd0_g = s0 / std_tilde
+    pos_idx = np.flatnonzero(p_arr > 0.0)
+    neg_idx = np.flatnonzero(p_arr < 1.0)
+
+    def _eval_q_pool_zstar(z_mat: np.ndarray) -> np.ndarray:
+        flat = z_mat.ravel()
+        lp = _logsumexp_components(
+            [math.log(float(w[g] * p_arr[g])) + _norm_logpdf(flat, float(m1_g[g]), float(sd1_g[g])) for g in pos_idx]
+        )
+        ln = _logsumexp_components(
+            [
+                math.log(float(w[g] * (1.0 - p_arr[g]))) + _norm_logpdf(flat, float(m0_g[g]), float(sd0_g[g]))
+                for g in neg_idx
+            ]
+        )
+        return np.asarray(special.expit(lp - ln), dtype=np.float64).reshape(z_mat.shape)
+
+    rng = np.random.default_rng(seed)
+    n_max = int(np.max(n_arr))
+    strata = rng.choice(w.size, size=int(n_eval_prompts), p=w)
+    pp = p_arr[strata][:, None]
+    labels = rng.random((int(n_eval_prompts), n_max)) < pp
+    scores = np.where(
+        labels,
+        float(mu1_base) + s1 * rng.normal(size=(int(n_eval_prompts), n_max)),
+        float(mu0_base) + s0 * rng.normal(size=(int(n_eval_prompts), n_max)),
+    )
+    mu_row = mu_tilde[strata][:, None]
+    sd_row = std_tilde[strata][:, None]
+    z_pop_full = (scores - mu_row) / sd_row
+
+    # 条件于 (X, S_{1:N}) 的精确后验正确率 q_X(S_i)，消除二元标签采样噪声
+    q_true_full = np.zeros_like(scores, dtype=np.float64)
+    for g in range(w.size):
+        mask_g = strata == g
+        if not np.any(mask_g):
+            continue
+        pg = float(p_arr[g])
+        if pg <= 0.0:
+            q_true_full[mask_g] = 0.0
+        elif pg >= 1.0:
+            q_true_full[mask_g] = 1.0
+        else:
+            sg = scores[mask_g]
+            lp = math.log(pg) + _norm_logpdf(sg, float(mu1_base), s1)
+            ln = math.log1p(-pg) + _norm_logpdf(sg, float(mu0_base), s0)
+            q_true_full[mask_g] = special.expit(lp - ln)
+
+    rows = np.arange(int(n_eval_prompts))
+    mean_sup_err = np.zeros(n_arr.size, dtype=np.float64)
+    scaled_sup_err = np.zeros(n_arr.size, dtype=np.float64)
+    pop_z_oracle_acc = np.zeros(n_arr.size, dtype=np.float64)
+    sample_z_oracle_acc = np.zeros(n_arr.size, dtype=np.float64)
+    raw_bon_acc = np.zeros(n_arr.size, dtype=np.float64)
+
+    for j, nv in enumerate(n_arr):
+        n_i = int(nv)
+        s_sub = scores[:, :n_i]
+        z_pop = z_pop_full[:, :n_i]
+        z_smp = _within_prompt_zscore(s_sub)
+        q_sub = q_true_full[:, :n_i]
+
+        sup_vec = np.max(np.abs(z_smp - z_pop), axis=1)
+        mean_sup_err[j] = float(np.mean(sup_vec))
+        scaled_sup_err[j] = mean_sup_err[j] / math.sqrt(math.log(float(n_i)) / float(n_i))
+
+        idx_raw = np.argmax(s_sub, axis=1)
+        idx_pop = np.argmax(_eval_q_pool_zstar(z_pop), axis=1)
+        idx_smp = np.argmax(_eval_q_pool_zstar(z_smp), axis=1)
+        raw_bon_acc[j] = float(np.mean(q_sub[rows, idx_raw]))
+        pop_z_oracle_acc[j] = float(np.mean(q_sub[rows, idx_pop]))
+        sample_z_oracle_acc[j] = float(np.mean(q_sub[rows, idx_smp]))
+
+    return {
+        "n_values": n_arr,
+        "mean_sup_abs_z_error": mean_sup_err,
+        "scaled_sup_error_over_sqrt_lnN_N": scaled_sup_err,
+        "raw_bon_acc": raw_bon_acc,
+        "population_z_oracle_acc": pop_z_oracle_acc,
+        "sample_z_oracle_acc": sample_z_oracle_acc,
+        "theoretical_raw_ceiling": float(diag["raw_bon_asymptotic_acc"]),
+        "theoretical_z_oracle_ceiling": float(diag["oracle_z_cal_asymptotic_acc"]),
+        "theoretical_ceiling_loss": float(diag["asymptotic_ceiling_loss"]),
+    }
+
+
 __all__ = [
     "PromptHeterogeneitySpec",
     "diagnose_simpson_confounding",
@@ -688,4 +822,5 @@ __all__ = [
     "diagnose_zscore_induced_collapse",
     "evaluate_pooled_vs_within_prompt_calibration",
     "simulate_zscore_induced_collapse",
+    "verify_sample_zscore_extremal_convergence",
 ]

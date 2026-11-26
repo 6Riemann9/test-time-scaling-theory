@@ -16,6 +16,7 @@ from tts_theory.calibration_theory import (
     build_score_bins,
     calibration_minimax_scaling,
     compute_bin_calibrator_scores,
+    empirical_quantile_spacings_bounds,
     exact_conditional_bin_bon_accuracy,
     joint_calibration_compute_scaling,
     simulate_finite_calibration_scaling,
@@ -46,6 +47,7 @@ from tts_theory.heterogeneity_theory import (
     diagnose_zscore_induced_collapse,
     evaluate_pooled_vs_within_prompt_calibration,
     simulate_zscore_induced_collapse,
+    verify_sample_zscore_extremal_convergence,
 )
 from tts_theory.integrals import (
     exact_bon_accuracy,
@@ -148,16 +150,18 @@ __all__ = [
     "compute_bin_calibrator_scores",
     "bernstein_zero_collapse_threshold",
     "calibration_minimax_scaling",
+    "empirical_quantile_spacings_bounds",
     "joint_calibration_compute_scaling",
     "tight_joint_minimax_scaling",
     "simulate_finite_calibration_scaling",
-    # V4/V5/V6 题目异质性、辛普森悖论、题内标准化与 Z 诱导坍塌（定理 7）
+    # V4/V5/V6/V8 题目异质性、辛普森悖论、题内标准化与样本 Z 诱导坍塌（定理 7）
     "PromptHeterogeneitySpec",
     "diagnose_simpson_confounding",
     "diagnose_within_prompt_residual",
     "diagnose_zscore_induced_collapse",
     "evaluate_pooled_vs_within_prompt_calibration",
     "simulate_zscore_induced_collapse",
+    "verify_sample_zscore_extremal_convergence",
     # V3/Stage2 真实大模型候选池与开源 RM 评估接口
     "extract_boxed_answer",
     "normalize_math_answer",
@@ -174,4 +178,4 @@ __all__ = [
     "evaluate_real_prompt_heterogeneity",
 ]
 
-__version__ = "0.5.0"
+__version__ = "0.8.0"

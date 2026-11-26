@@ -1,10 +1,10 @@
 # 文献定位、经典数学工具溯源与技术边界（Related Work & Novelty Audit）
 
-本文档梳理截至 2026 年 11 月与本项目直接相关的两类文献：（1）**大模型 Test-Time Scaling、Reward Model Overoptimization 与 Best-of-$N$ 校准文献**（12 篇）；（2）本项目证明所直接依托的**经典概率论、多元极值理论、Gaussian Copula 弱尾相依及非参数统计基础文献**（5 篇），明确区分对经典数学工具的领域化应用与在 Test-Time Scaling 设定下建立的具体结论边界。
+本文档梳理截至 2026 年 11 月与本项目直接相关的两类文献：（1）**大模型 Test-Time Scaling、Reward Model Overoptimization 与 Best-of-$N$ 校准文献**（12 篇）；（2）本项目证明所直接依托与对比的**经典概率论、多元极值理论、Gaussian Copula 弱尾相依、非参数众数估计及连续臂 Bandit 基础文献**（7 篇），明确区分对经典数学工具的领域化应用与在 Test-Time Scaling 设定下建立的具体结论边界。
 
 ---
 
-## 1. 相关文献全景（共 17 篇）
+## 1. 相关文献全景（共 19 篇）
 
 ### 1.1 LLM Test-Time Scaling 与 BoN 理论文献（12 篇）
 
@@ -23,15 +23,17 @@
 | **[11]** | Yano, Ishibashi, Oyamada (2026-10) | `arXiv:2610.19362` | *Tail Competition Explains Scaling in Best-of-N*：基于单变量 EVT 三域（Theorems 1–4）分析单裁判 BoN 尾部竞争与高斯 $\sigma_0>\sigma_1$ 坍塌，给出 tail-tension 早停判据。 |
 | **[12]** | Gui, Shao, Li, Guo, Wang (2026-10) | `arXiv:2610.34375` | *Whether or Where? Tail Calibration Signals Finite-Budget Reward Hacking*：给出 Beta 分位积分（Prop. 3.1/3.4）、对数凹单调判据（Prop. A.6）及基于尾部校准审计的预算早停方法。 |
 
-### 1.2 经典概率论、多元极值、Copula 尾相依与统计学习基础文献（5 篇）
+### 1.2 经典概率论、多元极值、Copula 尾相依、非参数众数与连续臂 Bandit 文献（7 篇）
 
-| 编号 | 论文/专著与作者 | 发表期刊 / 会议 | 对本项目数学工具的直接支撑与覆盖范围 |
+| 编号 | 论文/专著与作者 | 发表期刊 / 会议 | 对本项目数学工具的直接支撑与理论对比范围 |
 | :---: | :--- | :--- | :--- |
 | **[13]** | Savage (1962) | *J. Res. Nat. Bur. Standards* 66B:93–96 | 建立多元标准正态象限尾概率的经典 Mills 比上界与二次规划条件。 |
 | **[14]** | Hashorva & Hüsler (2003) | *Annals of the Institute of Statistical Mathematics (AISM)*, 55(3):507–522 | 系统推导多元高斯尾概率的 Active-Set 二次规划 $\min_{\mathbf{u}\ge\mathbf{1}}\mathbf{u}^\top\Sigma^{-1}\mathbf{u}$、本质正乘子支撑集 $I_+$ 与条件正态正象限退化情形下的精确渐近表示（定理 5A-II 直接应用该理论）。 |
 | **[15]** | Garivier & Cappé (2011) | *COLT* (`PMLR 19:359–376`) | 系统分析二项 Kullback-Leibler 置信界 `KL-UCB`/`KL-LCB` 的非渐近 Cramér–Chernoff 反演收敛性质（定理 6B/6C 直接复用该置信界）。 |
 | **[16]** | Tankov (2016) | *Journal of Multivariate Analysis (JMVA)*, 145:73–86 (`arXiv:1402.4683`) | 提出渐近独立随机向量（含 Gaussian Copula）的弱尾相依函数（weak tail dependence function），系统刻画了对数尺度下联合极端事件的指数衰减速率。 |
 | **[17]** | Das & Fasen-Hartmann (2024) | *Journal of Multivariate Analysis (JMVA)*, 202:105310 (`arXiv:2204.06205`) | 系统分析 **Gaussian Copula 与正则变化重尾边际耦合** 下不同尾集上的联合极端风险衰减率与边际变换效应，明确揭示对数因子与剩余尾相依结构的耦合机理（定理 5B-II 直接衔接该类概率结构）。 |
+| **[18]** | Romano (1988) | *The Annals of Statistics*, 16(2):629–647 | 建立非参数核密度众数（mode）位置估计的局部渐近 Minimax 下界与最优带宽理论（为定理 6A/6C 中局部极值非参数估计速率提供经典数理统计参照）。 |
+| **[19]** | Bubeck, Munos, Stoltz, Szepesvári (2011) | *Journal of Machine Learning Research (JMLR)*, 12:1655–1695 | 建立局部光滑度量空间连续臂 Bandit（X-Armed Bandits / HOO）在主动序贯探索下的累积与简单遗憾（simple regret）Minimax 理论（对比定理 6C 的被动两阶段采样约束）。 |
 
 ---
 
@@ -53,9 +55,16 @@
 | **定理 5A-I**（广义特征值负权） | 广义 Rayleigh 商极值与线性判别分析 | 将正/负类协方差广义特征值比 $\lambda_{\min}(\Sigma_1^{-1/2}\Sigma_0\Sigma_1^{-1/2})<1$ 引入多裁判 BoN 坍塌可逆性判别，解释非负集成必崩时负权差值对消共模错噪的机制。 |
 | **定理 5A-II**（Min-Ensemble QP） | `[14]` Hashorva & Hüsler (2003) 多元高斯极值 | 应用多元高斯正交象限 QP（含本质正乘子集 $I_+$、弱激活集 $I_0$ 条件象限常数 $\alpha_{c,I_0}$ 与密度前因子 $C^{\text{pdf}}_c=\gamma_c C^{\text{sf}}_c$）给出一般 SPD 相关高斯下 `Min-Ensemble` 的渐近相变三层级判据。 |
 | **定理 5A-III**（Safe-Fisher & QDA） | 二次规划变量替换凸化（S-Lemma 类对偶）与局部椭球极值体积 | 针对渐近尾安全约束下的 **$N=2$ 二样本 SNR** 建立凸化一维光谱路径 $\mathbf{w}_\tau=(\Sigma_0-\tau\Sigma_1)^{-1}\Delta\boldsymbol{\mu}$（明确不主张对一般 $N>2$ 最优）；在不可逆相 $\Sigma_0\succ\Sigma_1$ 下计算多维 QDA 天花板及其 $N^{-2/K}$ 收敛率。 |
-| **定理 5B**（重尾卷积与 Gaussian Copula） | 正则变化卷积、`[16]` Tankov (2016)、`[17]` Das & Fasen-Hartmann (2024) 与 Slepian 引理 | 将 Gaussian Copula + Student-$t$ 弱尾相依指数 $\eta_c=1/\gamma_c(R_c)\in(0,1]$（非负相关由 Slepian 引理充分保证 $\in[1/K,1]$，一般正定下按本质集基数 $|I_{+,c}|$ 给出 $(\ln t)^{(\gamma_c-|I_{+,c}|)/2}$）与同源污染击穿 ($\epsilon_s>0$) 映射到多裁判 BoN 相界 $\alpha_0/\eta_{0,\text{eff}}$ vs $\alpha_1/\eta_1$。 |
-| **定理 6A–6C**（联合 $(M, N)$ Minimax） | `[15]` Garivier & Cappé (2011) KL-LCB、Fano 下界、非参数局部 Hölder 优化 | 在固定题目单分布与**一致正则峰类 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$** 下，借助最近峰在线样本耦合与三事件离线并界（覆盖+计数+Hoeffding 下侧偏差）消除旧有 $(\ln N)^\beta$ 间隙，并构造匹配 Fano / Oracle 下界 $\Omega((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta})$。 |
-| **定理 7A–7C**（层次异质性与标准化） | 混合分布全导数（Simpson 分解）、位置-尺度不变量、高斯混合尾部竞争 | 显式连接固定题条件模型（定理 1–6）与跨题层次模型 $X\sim\mathcal{P}_X$：导出 $q'_{\text{pool}}$ 协方差掩蔽公式、$N=2$ 样本 Z-Score 三类纯秩规则天花板，以及含边界原子 $\pi_0>0$ 时**总体标准化 $Z^*$ 自发诱导右尾极限 $\frac{\pi_1}{\pi_0+\pi_1}$** 与渐近上限损失（同时区分总体方差比 $\kappa_Z$ 与尾竞争主导）。 |
+| **定理 5B**（重尾卷积与 Gaussian Copula） | 正则变化卷积、`[16]` Tankov (2016)、`[17]` Das & Fasen-Hartmann (2024) 与 Slepian 引理 | 将 Gaussian Copula + Student-$t$ 弱尾相依指数 $\eta_c=1/\gamma_c(R_c)$（$K\ge 2, R_c\succ 0$ 时属 $(0,1)$，非负相关充分得 $[1/K,1)$；按本质集基数 $|I_{+,c}|$ 给出 $(\ln t)^{(\gamma_c-|I_{+,c}|)/2}$）与同源污染击穿 ($\epsilon_s>0$) 映射到多裁判 BoN 相界 $\alpha_0/\eta_{0,\text{eff}}$ vs $\alpha_1/\eta_1$。 |
+| **定理 6A–6C & 命题 6.1**（联合 $(M, N)$ Minimax） | `[15]` Garivier & Cappé (2011) KL-LCB、`[18]` Romano (1988)、`[19]` Bubeck et al. (2011)、Rényi–Pyke 顺序统计量间距 | 在一致正则峰类 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$ 下建立离线被动校准 $M$ 与在线无标签抽样 $N$ 解耦的加性 Minimax 简单遗憾 $\Theta((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta})$，并用样本分割 Gamma 间距界将经验分位数分桶覆盖至一切 $\beta>0$。 |
+| **定理 7A–7C & 命题 7.1**（层次异质性与样本标准化） | 混合分布全导数（Simpson 分解）、位置-尺度不变量、次高斯极值耦合与留出验证不等式 | 连接固定题条件模型（定理 1–6）与跨题层次模型 $X\sim\mathcal{P}_X$：给出显式有限参数二层辛普森遮蔽、$N=2$ 纯秩非严格界与序反转充要条件，并证明含 $\pi_0>0$ 时在线样本标准化 $Z_{i,N}$ 以 $O_p(\sqrt{(\ln N)/N})$ 一致逼近总体 $Z^*$ 从而继承渐近上限损失。 |
+
+### 2.3 定理 6C 与经典非参数众数估计及连续臂简单遗憾的理论异同
+
+定理 6A–6C 中的离线项 $(\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}}$ 在代数指数上与经典非参数极值统计及连续空间优化一脉相承，但问题设定与耦合机制存在两处明确差异：
+
+1. **自变量位置误差 vs. 回归函数值简单遗憾（对比 Romano 1988 `[18]`）**：经典核密度众数估计关注恢复密度峰值位置 $|\hat{x}_M - x^*|$，在二阶可微光滑度 $\beta=2$ 下位置收敛率为 $(M/\ln M)^{-1/5}$，而对应的**函数值遗憾** $f(x^*) - f(\hat{x}_M) \asymp |\hat{x}_M - x^*|^\beta$ 则具有指数 $\frac{\beta}{2\beta+1}$（$\beta=2$ 时为 $2/5$）。定理 6C 研究的是固定混合边缘密度 $f_{\text{mix}}$ 上的非参数 Bernoulli 回归最大化（且允许任意粗糙峰 $\beta \in (0, 1]$，此时位置导数不存在，但函数值遗憾 $(\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}}$ 依然良定义）；同时当总体分位数未知时，需利用 Rényi–Pyke 顺序统计量乘性间距界取代在 $\beta \le 0.5$ 失效的加性 DKW 界。
+2. **主动序贯查询 vs. 被动“离线校准 $M$ + 在线无标签候选池 $N$”双阶段解耦（对比 Bubeck et al. 2011 `[19]`）**：在 X-Armed Bandits 等主动连续臂优化中，算法可在高潜力峰值邻域自适应加密拉臂查询，简单遗憾可随查询预算指数缩减（在已知局部光滑参数时可达 $O(M^{-\beta/d})$ 或多项式更快收敛）。而在 Test-Time Scaling 场景下，离线校准集 $\mathcal{D}_M \sim P^{\otimes M}$ 来自**被动固定抽样**（无法主动向峰值区间增采有标签轨迹），使得离线项受全支撑覆盖瓶颈制约保持 $(\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}}$；同时在线推理阶段无法自由输出任意实数点 $\hat{x}$，只能从生成器新抽出的有限 $N$ 个无标签离散点 $\{S_1,\dots,S_N\} \sim F_{\text{mix}}^{\otimes N}$ 中择一，从而额外引入即使在完美已知后验（$M=\infty$）下也不可消除的在线极值间距瓶颈 $\Theta(N^{-\beta})$。两者叠加构成了 TTS 特有的双阶段解耦率 $\Theta\big((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta}\big)$。
 
 ---
 
@@ -201,5 +210,25 @@
   pages={105310},
   year={2024},
   doi={10.1016/j.jmva.2024.105310}
+}
+
+@article{romano1988weak,
+  title={On Weak Convergence and Optimality of Kernel Density Estimates of the Mode},
+  author={Romano, Joseph P.},
+  journal={The Annals of Statistics},
+  volume={16},
+  number={2},
+  pages={629--647},
+  year={1988},
+  doi={10.1214/aos/1176350824}
+}
+
+@article{bubeck2011xarmed,
+  title={X-Armed Bandits},
+  author={Bubeck, S{\'e}bastien and Munos, R{\'e}mi and Stoltz, Gilles and Szepesv{\'a}ri, Csaba},
+  journal={Journal of Machine Learning Research},
+  volume={12},
+  pages={1655--1695},
+  year={2011}
 }
 ```

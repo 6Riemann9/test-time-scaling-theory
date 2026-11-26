@@ -578,31 +578,40 @@ def gaussian_peak_threshold(spec: GaussianVerifierSpec) -> float:
 def check_collapse_criterion(spec: GaussianVerifierSpec) -> dict:
     """判定高斯 Verifier 的相变状态、单调性与渐近极限（定理 2）。
 
+    在 sigma0 < sigma1（kappa < 1）且渐近一致（lim P_BoN(N) = 1）相区下，细分三种初值行为：
+    - delta_mu > 0：对一切 N >= 1 全局严格递增（initial_step_sign = +1）；
+    - delta_mu = 0：初值平局 P_BoN(1) = P_BoN(2) = p，随后对一切 N >= 2 严格递增趋向 1（initial_step_sign = 0）；
+    - delta_mu < 0：严格先降后升（U 型谷底，P_BoN(2) < P_BoN(1) = p，跨过有限谷底后升向 1，initial_step_sign = -1）。
+
     返回字段:
         - regime: 相变区域标识
-        - will_collapse: 是否存在 N -> inf 时准确率为 0 的坍塌（或相对先验衰退）
+        - will_collapse: 是否存在 N -> inf 时准确率为 0 的坍塌
         - is_monotone_increasing: P_BoN(N) 是否对所有 N >= 1 全局严格递增
+        - initial_step_sign: sgn(P_BoN(2) - P_BoN(1)) in {-1, 0, +1}
         - asymptotic_limit: lim_{N -> inf} P_BoN(N)
         - x_peak: sigma0 > sigma1 时的似然比峰值点，否则为 None
     """
     dmu = spec.delta_mu
     same_sigma = math.isclose(spec.sigma0, spec.sigma1, rel_tol=1e-12, abs_tol=1e-12)
+    init_sign = 0 if math.isclose(dmu, 0.0, rel_tol=1e-12, abs_tol=1e-12) else (1 if dmu > 0.0 else -1)
 
     if not same_sigma and spec.sigma0 > spec.sigma1:
         return {
             "regime": "collapse",
             "will_collapse": True,
             "is_monotone_increasing": False,
+            "initial_step_sign": init_sign,
             "asymptotic_limit": 0.0,
             "x_peak": gaussian_peak_threshold(spec),
         }
 
     if same_sigma:
-        if math.isclose(dmu, 0.0, rel_tol=1e-12, abs_tol=1e-12):
+        if init_sign == 0:
             return {
                 "regime": "uninformative_constant",
                 "will_collapse": False,
                 "is_monotone_increasing": False,
+                "initial_step_sign": 0,
                 "asymptotic_limit": float(spec.p),
                 "x_peak": None,
             }
@@ -611,6 +620,7 @@ def check_collapse_criterion(spec: GaussianVerifierSpec) -> dict:
                 "regime": "monotone_consistent",
                 "will_collapse": False,
                 "is_monotone_increasing": True,
+                "initial_step_sign": 1,
                 "asymptotic_limit": 1.0,
                 "x_peak": None,
             }
@@ -618,17 +628,20 @@ def check_collapse_criterion(spec: GaussianVerifierSpec) -> dict:
             "regime": "monotone_collapse",
             "will_collapse": True,
             "is_monotone_increasing": False,
+            "initial_step_sign": -1,
             "asymptotic_limit": 0.0,
             "x_peak": None,
         }
 
     # sigma0 < sigma1：右尾似然比趋向 +inf，必然渐近一致；
-    # 由 Karlin 单交叉不等式，全局严格递增当且仅当 P_BoN(2) > P_BoN(1)，即 delta_mu > 0
-    if dmu > 0.0:
+    # 全局从 N=1 起严格递增当且仅当 P_BoN(2) > P_BoN(1)，即 delta_mu > 0；
+    # delta_mu = 0 时 P_BoN(1) = P_BoN(2) = p，随后对一切 N >= 2 严格递增；delta_mu < 0 时呈严格 U 型。
+    if init_sign > 0:
         return {
             "regime": "consistent_monotone",
             "will_collapse": False,
             "is_monotone_increasing": True,
+            "initial_step_sign": 1,
             "asymptotic_limit": 1.0,
             "x_peak": None,
         }
@@ -636,6 +649,7 @@ def check_collapse_criterion(spec: GaussianVerifierSpec) -> dict:
         "regime": "non_monotone_recovery",
         "will_collapse": False,
         "is_monotone_increasing": False,
+        "initial_step_sign": init_sign,
         "asymptotic_limit": 1.0,
         "x_peak": None,
     }

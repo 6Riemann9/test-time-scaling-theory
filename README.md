@@ -2,13 +2,13 @@
 
 面向大语言模型（LLM）推理阶段的**测试时计算缩放（Test-Time Scaling, TTS）极限行为、多噪声裁判一般融合与 Copula 尾相依、有限校准集与有限算力联合 Minimax 标度律、以及题目异质性辛普森混杂**的概率论证明与数值实证库。
 
-> **架构概览（经 V7 数学与统计推断修订）**：
-> - **第一部分：预备理论与单裁判基础（定理 1–4）**：在统一层次概率框架下，明确限定定理 1–6 为固定题目 $X=x$（或同质分布）条件下的统计性质，重述顺序统计量积分（含离散平局原子）、$C^0/C^1$ 分离 MLRP 判据、固定峰值高度机制下的 Gumbel $e^{-\gamma}N^*_0$ 定理（附录 A 说明工程 `[1/1]` Padé 拟合）、$\text{PPV}=1$ 边界散度分离以及异质单错类期望权重约束的有界加权多数决（见 [RELATED_WORK.md](RELATED_WORK.md) 文献定位）。
+> **架构概览（经 V8 数学边界与统计推断修订）**：
+> - **第一部分：预备理论与单裁判基础（定理 1–4）**：在统一层次概率框架下，明确限定定理 1–6 为固定题目 $X=x$（或同质分布）条件下的统计性质，重述顺序统计量积分（含离散平局原子）、$C^0/C^1$ 分离 MLRP 判据、高斯五相分类（含 $\kappa<1,\ \Delta\mu=0$ 初值平局后严格递增边界）、固定峰值高度机制下的 Gumbel $e^{-\gamma}N^*_0$ 定理（附录 A 说明工程 `[1/1]` Padé 拟合）、$\text{PPV}=1$ 边界散度分离以及异质单错类期望权重约束的有界加权多数决（见 [RELATED_WORK.md](RELATED_WORK.md) 文献定位）。
 > - **第二部分：多噪声集成、联合 Minimax 与题目异质性理论（定理 5–7）**：
->   - **定理 5（广义线性光谱、QDA 维度律、退化 QP `Min` 与 Copula 重尾）**：推导一般 $(\Sigma_1, \Sigma_0)$ 下广义特征值负权逆转与渐近尾安全约束下最大化 $N=2$ 线性 SNR 的凸化光谱路径 `Safe-Fisher` $\mathbf{w}_\tau=(\Sigma_0-\tau\Sigma_1)^{-1}\Delta\boldsymbol{\mu}$；刻画不可逆相 $\Sigma_0\succ\Sigma_1$ 下 Bayes QDA 天花板与 $N^{-2/K}$ 收敛率；利用本质正乘子集 $I_{+,c}$ 与弱激活正象限常数 $\alpha_{c, I_0}$ 将 `Min-Ensemble` 与 Gaussian-Copula + Student-$t$（$\eta_c \in (0, 1]$，非负相关为 $[1/K, 1]$ 之充分条件；对数因子 $(\gamma_c - |I_{+,c}|)/2$）推广至含零乘子弱激活边界的任意 SPD 相关矩阵。
->   - **定理 6（一致正则类联合 $(M, N)$ Minimax 标度律与非渐近 `KL-LCB`）**：分离逐点渐近类 $\mathcal{F}_\beta^{\text{sep}}$ 与带公共类常数的一致正则分布类 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$；利用三事件离线并界（联合覆盖 + 桶计数 + Hoeffding 下侧偏差）与最近峰在线样本耦合，证明适用于一切 $\beta > 0$ 的 $N$-无关 `KL-LCB` 上界 $O\big((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta}\big)$ 及匹配的 Fano / Oracle 联合下界。
->   - **定理 7（题目异质性、辛普森遮蔽与标准化诱导尾反转）**：建立池化后验导数协方差分解与二层构造性遮蔽、$N=2$ 样本 Z-Score 三类纯秩天花板及有限四阶矩下的先验残差边界；证明在含不可解题原子 $\pi_0>0$ 的同方差单调基准上，总体标准化 $Z^*$ 无条件诱导出右尾极限 $\frac{\pi_1}{\pi_0+\pi_1}$（$\pi_1=0<\pi_0$ 时导致 Oracle $Z^*$ 校准渐近上限损失），给出单内点充分条件 $\kappa_Z>1$ 并通过多内点反例（$\kappa_Z \approx 0.3103 < 1$）区分解耦总体方差与尾部竞争。
-> - **文献溯源与实证验证**：[RELATED_WORK.md](RELATED_WORK.md) 梳理 17 篇文献（含 Hashorva & Hüsler 2003、Tankov 2016、Das & Fasen-Hartmann 2024 等经典极值与 Gaussian Copula 文献及 Huang et al. ICML 2025 等 TTS 文献），并在 7 组公开 LLM/RM 基准池上（报告独立题目数 $P$、真不相交内部留出 `Hybrid-Adaptive` 及 500 次题目级 Paired Cluster Bootstrap 95% 置信区间）验证理论行为与局限边界。
+>   - **定理 5（广义线性光谱、QDA 维度律、退化 QP `Min` 与 Copula 重尾）**：推导一般 $(\Sigma_1, \Sigma_0)$ 下广义特征值负权逆转与渐近尾安全约束下最大化 $N=2$ 线性 SNR 的凸化光谱路径 `Safe-Fisher` $\mathbf{w}_\tau=(\Sigma_0-\tau\Sigma_1)^{-1}\Delta\boldsymbol{\mu}$；刻画不可逆相 $\Sigma_0\succ\Sigma_1$ 下 Bayes QDA 天花板与 $N^{-2/K}$ 收敛率；利用本质正乘子集 $I_{+,c}$ 与弱激活正象限常数 $\alpha_{c, I_0}$ 将 `Min-Ensemble` 与 Gaussian-Copula + Student-$t$（$K\ge 2, R_c\succ 0$ 时 $\eta_c \in (0, 1)$，非负相关充分得 $[1/K, 1)$；对数因子 $(\gamma_c - |I_{+,c}|)/2$）推广至含零乘子弱激活边界的任意 SPD 相关矩阵。
+>   - **定理 6 & 命题 6.1（一致正则类联合 $(M, N)$ Minimax 标度律、样本分割间距界与非渐近 `KL-LCB`）**：分离逐点渐近类 $\mathcal{F}_\beta^{\text{sep}}$ 与带公共类常数的一致正则分布类 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$；利用三事件离线并界（联合覆盖 + 桶计数 + Hoeffding 下侧偏差）与最近峰在线样本耦合，证明适用于一切 $\beta > 0$ 的 $N$-无关 `KL-LCB` 上界 $O\big((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}} + N^{-\beta}\big)$ 及匹配的 Fano / Oracle 联合下界，并通过 Rényi–Pyke 顺序统计量 Gamma 间距界（命题 6.1）将未知总体分位数下的经验等频分桶覆盖至一切 $\beta > 0$（消解加性 DKW 界在 $0<\beta\le 0.5$ 的相对误差发散）。
+>   - **定理 7 & 命题 7.1（题目异质性、显式辛普森遮蔽与在线样本标准化极值收敛）**：建立池化后验导数协方差分解与闭区间 `[3.5, 4.2]` 上的有限参数二层遮蔽构造、$N=2$ 样本 Z-Score 纯秩非严格上界及严格优势双向序反转充要条件；证明含不可解题原子 $\pi_0>0$ 时总体标准化 $Z^*$ 无条件诱导出右尾极限 $\frac{\pi_1}{\pi_0+\pi_1}$（区分多内点反例 $\kappa_Z \approx 0.3103 < 1$ 与单内点充分条件 $\kappa_Z>1$），并进一步证得实际在线样本标准化满足一致极值收敛 $\max_{1\le i\le N}|Z_{i,N}-Z_i^*(X)| = O_p(\sqrt{(\ln N)/N}) \xrightarrow{p} 0$ 从而继承渐近上限损失（定理 7C(4)）及三分支留出门控选择遗憾界（命题 7.1）。
+> - **文献溯源与实证验证**：[RELATED_WORK.md](RELATED_WORK.md) 梳理 19 篇文献（涵盖 Romano 1988 非参数众数估计、Bubeck et al. 2011 连续臂 Bandit、Hashorva & Hüsler 2003、Tankov 2016、Das & Fasen-Hartmann 2024 等经典统计与极值文献及 Huang et al. ICML 2025 等 TTS 文献），并在 7 组公开 LLM/RM 基准池上（报告独立题目数 $P$、三分支对称嵌套交叉验证 `Hybrid-Adaptive`、2,000 次 Paired Cluster Bootstrap 95% CI 及 10,000 次 Phipson–Smyth 符号翻转置换检验 $p$ 值）验证理论行为与局限边界。
 
 ---
 
@@ -23,8 +23,8 @@
 | **预备** | **定理 3** | **二元缩放律、$\text{PPV}=1$ 边界散度与闭式预算** | $P_{\text{bin}}(N)=\text{PPV}-C(1-q_1)^N$；$\beta=0$ 给 $\text{TV}$ 与反向 $\text{KL}$ | `BinaryVerifierSpec`, `binary_bon_divergence_bounds` |
 | **预备** | **定理 4** | **校准后验 & 单错类条件权重约束加权多数决** | $\Delta_{\min}=p\mu_{w,+}-\sup_j(p_j\mu_{w,j})>0$ 致 $O(e^{-cN})$ | `weighted_majority_convergence_bound`, `TwoStageVerifiedMajority` |
 | **核心 1** | **定理 5** | **$N=2$ `Safe-Fisher`、QDA $N^{-2/K}$、含退化 QP `Min` 与 Copula** | $\mathbf{w}_\tau=(\Sigma_0-\tau\Sigma_1)^{-1}\Delta\boldsymbol{\mu}$；$(\gamma_c - \|I_{+,c}\|)/2$ | `solve_positive_quadrant_qp`, `pareto_linear_ensemble_frontier`, `bayes_qda_multi_verifier_analysis` |
-| **核心 2** | **定理 6** | **$\mathcal{F}_\beta^{\text{unif}}$ 上联合 $(M,N)$ Minimax 与 `KL-LCB` 三事件界** | $N$-无关 $K^*(M)$ 匹配 $\Omega((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}}+N^{-\beta})$（$\beta>0$） | `tight_joint_minimax_scaling`, `joint_calibration_compute_scaling` |
-| **核心 3** | **定理 7** | **辛普森遮蔽、$N=2$ 纯秩与 $Z^*$ 尾反转（含 $\kappa_Z$ 充分条件）** | $\lim_{z\to\infty} q_{\text{pool},Z^*}(z)=\frac{\pi_1}{\pi_0+\pi_1}$；$\{0,p_1\} \implies \kappa_Z>1$ | `diagnose_simpson_confounding`, `diagnose_zscore_induced_collapse` |
+| **核心 2** | **定理 6 & 命题 6.1** | **$\mathcal{F}_\beta^{\text{unif}}$ 联合 $(M,N)$ Minimax 与全 $\beta>0$ 经验间距界** | $N$-无关 $K^*(M)$ 匹配 $\Omega((\frac{\ln M}{M})^{\frac{\beta}{2\beta+1}}+N^{-\beta})$；$\hat{\pi}_k\in[\frac{1}{2K},\frac{2}{K})$ | `tight_joint_minimax_scaling`, `empirical_quantile_spacings_bounds` |
+| **核心 3** | **定理 7 & 命题 7.1** | **显式辛普森遮蔽、$N=2$ 纯秩界与在线样本 $Z_{i,N}$ 极值收敛** | $\max_i\|Z_{i,N}-Z_i^*\|=O_p(\sqrt{\frac{\ln N}{N}})$；三分支留出门控 | `diagnose_simpson_confounding`, `verify_sample_zscore_extremal_convergence` |
 
 ---
 
@@ -33,17 +33,17 @@
 ```text
 test-time-scaling-theory/
 ├── LICENSE                                    # MIT 开源许可证
-├── pyproject.toml                             # 项目构建与 pytest 配置 (v0.7.0)
-├── PROOF.md                                   # 预备定理 1–4 与核心定理 5–7 概率论证明稿
-├── RELATED_WORK.md                            # 17 篇 TTS 及经典多元极值/Copula/Bandit 文献溯源对比
+├── pyproject.toml                             # 项目构建与 pytest 配置 (v0.8.0)
+├── PROOF.md                                   # 预备定理 1–4 与核心定理 5–7（含命题 6.1 / 7.1）证明稿
+├── RELATED_WORK.md                            # 19 篇 TTS 及经典多元极值/Copula/众数估计/Bandit 文献对照
 ├── README.md                                  # 项目总览与复现指南
 ├── src/tts_theory/
 │   ├── __init__.py                            # 统一公开 API 导出
 │   ├── theorems.py                            # 定理 1–4 分布规格、散度边界与异质权重接口
 │   ├── ensemble_theory.py                     # 定理 5 Safe-Fisher/QDA/含零乘子 QP/Copula 统一模块
-│   ├── calibration_theory.py                  # 定理 6 KL-LCB、一致正则类与联合 Minimax 模块
-│   ├── heterogeneity_theory.py                # 定理 7 辛普森遮蔽、纯秩天花板与 Z* 尾反转诊断
-│   ├── real_eval.py                           # 真实候选池评估、真内部留出及题目级 Cluster Bootstrap 引擎
+│   ├── calibration_theory.py                  # 定理 6 KL-LCB、一致正则类、Gamma 间距界与联合 Minimax 模块
+│   ├── heterogeneity_theory.py                # 定理 7 辛普森遮蔽、纯秩上界与样本 Z_{i,N} 极值收敛诊断
+│   ├── real_eval.py                           # 真实候选池评估、三分支嵌套留出及 Cluster Bootstrap / 置换检验引擎
 │   ├── integrals.py                           # 双精度 PIT 分段 Gauss-Legendre / quad 引擎
 │   ├── simulator.py                           # 流式分块向量化蒙特卡洛仿真器
 │   └── algorithms.py                          # StandardBoN, OptimalNStarBoN, EmpiricalScoreCalibrator,
@@ -57,7 +57,8 @@ test-time-scaling-theory/
 │   ├── test_v4_theory.py                      # 定理 5–7 推广、Fano 1/5、KL-LCB、N^{-2} 与辛普森单测
 │   ├── test_v5_rigor.py                       # 边界条件与极端构造回归验证（9 项）
 │   ├── test_v6_theory.py                      # 定理 5A-III (Safe-Fisher/QDA)、6C 等频检验与 7C 单测（6 项）
-│   └── test_v7_counterexamples.py             # V7 审稿反例复现、零乘子精确积分与聚类统计推断单测（5 项）
+│   ├── test_v7_counterexamples.py             # V7 审稿反例复现、零乘子精确积分与聚类统计推断单测（5 项）
+│   └── test_v8_rigor.py                       # V8 二审边界、beta<=0.5 间距界、样本 Z 收敛与三分支门控单测（7 项）
 ├── scripts/
 │   ├── verify_theorems.py                     # 定理 1–4 验证 -> results/theorem_verification.json
 │   ├── run_experiments.py                     # 参数扫描与五算法对比 -> results/experiment_results.json
@@ -70,11 +71,13 @@ test-time-scaling-theory/
 │   ├── plot_stage2_figures.py                 # Stage 2 图 8–10 绘图 -> results/figures/*.png
 │   ├── verify_v4_theory.py                    # 定理 5–7 定量交叉验证 -> results/v4_theory_verification.json
 │   ├── verify_v6_theory.py                    # 定理 5A-III / 6C 等频 / 7C 验证 -> results/v6_theory_verification.json
-│   └── verify_v7_rigor.py                     # V7 审稿反例数值校验与题目级真实异质性重算 -> results/v7_rigor_verification.json
+│   ├── verify_v7_rigor.py                     # V7 反例数值校验 -> results/v7_rigor_verification.json
+│   └── verify_v8_rigor.py                     # V8 数学核验与三分支嵌套留出真实异质性重算 -> results/v8_rigor_verification.json
 └── results/
-    ├── EXPERIMENT_REPORT.md                   # 全套实验与理论验证分析报告（含 V7 统计推断与反例校验）
+    ├── EXPERIMENT_REPORT.md                   # 全套实验与理论验证分析报告（含 V7/V8 统计推断与反例校验）
     ├── theorem_verification.json / experiment_results.json / v2_extension_results.json
-    ├── real_llm_results.json / v4_theory_verification.json / v6_theory_verification.json / v7_rigor_verification.json
+    ├── real_llm_results.json / v4_theory_verification.json / v6_theory_verification.json
+    ├── v7_rigor_verification.json / v8_rigor_verification.json
     ├── stage2_real_results.json / stage2_summary.csv / param_sweep_summary.csv / algorithm_comparison_summary.csv
     └── figures/
         ├── scaling_collapse_curves.png        # 图 1：异方差与污染尾部下的 BoN 坍塌曲线
@@ -101,10 +104,10 @@ git clone https://github.com/6Riemann9/test-time-scaling-theory.git
 cd test-time-scaling-theory
 python -m pip install --no-deps --no-build-isolation -e .
 
-# 2. 运行全量单元测试（共 54 项，含 V7 反例回归专项单测）
+# 2. 运行全量单元测试（共 61 项，含 V7/V8 反例与数学边界专项单测）
 python -m pytest -v
 
-# 3. 运行理论实验与 V7 反例/统计校验脚本
+# 3. 运行理论实验与 V7/V8 反例及统计校验脚本
 python scripts/verify_theorems.py
 python scripts/run_experiments.py
 python scripts/plot_figures.py
@@ -113,6 +116,7 @@ python scripts/plot_v2_figures.py
 python scripts/verify_v4_theory.py
 python scripts/verify_v6_theory.py
 python scripts/verify_v7_rigor.py
+python scripts/verify_v8_rigor.py
 
 # 4. 运行真实大模型/RM 实证实验（首次运行将自动缓存数据至 data/）
 python scripts/run_real_llm_experiments.py
@@ -127,19 +131,19 @@ python scripts/plot_stage2_figures.py
 
 详细量化分析请参阅 [results/EXPERIMENT_REPORT.md](results/EXPERIMENT_REPORT.md)。以下报告基于独立题目数 $P$ 与配对整群自助法（Paired Cluster Bootstrap）的实测结论：
 
-### 4.1 关键实测指标与 V7 审稿修补核验
+### 4.1 关键实测指标与 V7/V8 审稿修补核验
 - **预备定理数值基准精度**：分段 Gauss-Legendre 与自适应 `quad` 最大偏差 `≤ 3.47e-13`；与 $1.5\times 10^6$ 次 MC 全点误差 `≤ 7.68e-4`；`saddle_refined` 跨 104 组内点参数 MRE `8.28%`（$R^2 = 0.9989$）；强诱饵 + $\epsilon=0.15$ 下 `Two-Stage-Verified-Majority` 在 $N=1000$ 达 `99.983%`。
 - **多裁判线性光谱与 QP/Copula 退化核验**：
   - 3D 耦合实例 $N=4096$ 下 `Fisher (kappa=1.507)` 跌至 `28.99%`，$N=2$ 尾安全解 `Safe-Fisher (tau*=0.2843, kappa=1.000)` 达 `95.79%`；真实 `RB2 hetero6 (P=1,723, N=4)` 上 `Fisher=88.28%`, `QDA=87.93%`, `Safe-Fisher=81.66%`, `GenEig=39.29%`（实证说明 `Safe-Fisher` 针对 $N=2$ 而非 $N>2$ 精确最优化）。
   - $\Sigma_0\succ\Sigma_1$ 下 QDA 天花板随 $K=1\to 2\to 3$ 增至 `0.3957 < 0.5316 < 0.6538`，$K=1$ ($N^{-2}$) 与 $K=2$ ($N^{-1}$) 观测/理论遗憾比收敛至 `0.9998` 与 `0.9530–1.1654`。
-  - **V7 反例核验（P0-03 & P0-04）**：4×4 块对角负相关矩矩阵给 `eta=6/23 > 1/4`（证非负相关仅充分不必要）；3×3 零乘子弱激活矩阵 (`I_+=[0,1], I_0=[2]`) 经 2D 数值积分在 $t=500$ 处与修正阶 $\frac{1}{4\pi}t^{-2}e^{-t^2}$ 比值达 **`1.0022`**。
-- **有限校准集与 $N$-无关等频分桶**：
+  - **QP/Copula 反例与精确边界核验**：4×4 块对角负相关矩阵给 `eta=6/23 > 1/4`（证非负相关仅充分不必要），$K=3, \rho=0.99$ 给 `eta=0.99333 < 1`（证 $K\ge 2, R_c\succ 0 \implies \eta_c\in(0,1)$）；3×3 零乘子弱激活矩阵 (`I_+=[0,1], I_0=[2]`) 经 2D 数值积分在 $t=500$ 处与修正阶 $\frac{1}{4\pi}t^{-2}e^{-t^2}$ 比值达 **`1.0022`**。
+- **有限校准集、$N$-无关等频分桶与 $\beta \le 0.5$ 间距浓缩**：
   - `Opt 1/5 + KL-LCB` 在 `AceMath (M=100, N=64)` 上以 **`69.21%`** 优于过细 `Fixed-60 MLE`（`63.82%`）；在 `M=50,000, N=8`（显式 **`binning="quantile"`**）上 $N$-无关 `K=8`（**`44.44%`**）击败截断基线 `K=2`（`37.95%`, **`+6.49 pp`**）。
-  - **V7 窄峰反例核验（P0-01）**：无统一曲率约束的 $q_h(s)=\frac{1}{4}+\frac{1}{2}e^{-s^2/h^2}$ 在 $N=10, h=0.005$ 下遗憾达 `0.4827`（$>0.48$），验证将 Minimax 结论限定于一致正则类 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$ 的必要性。
-- **跨领域真实题目异质性与 Z-Score 尾反转（V7 真内部留出 + 500× Cluster Bootstrap）**：
-  - **`S3 GSM8K+GPQA+AIME` ($P=2,798, N=128$)**：`Pooled-KL-LCB = 48.65% ± 0.90%` vs `Within-Z` / `Hybrid-Adaptive = 49.90% ± 0.90%`（配对差 **`+1.25 pp`**, 95% CI `[+0.51, +2.10] pp`, $p < 0.002$）；`S1a RB2 ($P=1,855, N=4$)` `Hybrid/Within-Z` 优于 `Pooled` 达 **`+1.07 pp`**（95% CI `[+0.36, +1.82] pp`, $p=0.0040$）。
-  - **`S4 AceMath ($P=8,987, N=64$)` & `S2 OlympiadBench ($P=674, N=128$)`**：`Within-Z` 相对 `Pooled` 净损 `-2.42 pp / -2.72 pp / -8.26 pp`（均 $p < 0.002$），而真不相交 80%/20% 内部留出 `Hybrid` 一致锁定 `Pooled` 保持零损失。
-  - **Z-Score 反例与经验尾剖析（P0-05）**：三层 $\Delta=100$ 反例核验 $\kappa_Z=0.3103 < 1$ 仍发生右尾跌零（区别于单内点充分条件 $\kappa_Z > 1$）；`AceMath RM-B` ($P=8,987, N=64$) 观测到经验零成功占比 `14.22%`（不直接等同于潜变量 $p(X)=0$）与顶分位后验回撤（`72.79% -> 46.38%`）。
+  - **窄峰反例与全 $\beta>0$ 经验间距核验**：无公共曲率约束的 $q_h(s)=\frac{1}{4}+\frac{1}{2}e^{-s^2/h^2}$ 在 $N=10, h=0.005$ 下遗憾达 `0.4827`（验证限定于 $\mathcal{F}_\beta^{\text{unif}}(C_1, f_{\min}, \eta_0)$ 的必要性）；在 $\beta=0.25 \le 0.5$（$M=2.5\times 10^6, K=3065$）下，加性 DKW 相对误差界达 `8.924 > 1` 失效，而样本分割 Gamma 间距界满足 $d_{\min}=407 \ge 378.52$（失效上界 `6.74e-4`）。
+- **跨领域真实题目异质性与三分支嵌套留出推断（2,000× Cluster Bootstrap + 10,000× Phipson–Smyth 置换检验）**：
+  - **`S3 GSM8K+GPQA+AIME` ($P=2,798, N=128$)**：`Pooled-KL-LCB = 48.68% ± 0.88%`，`Within-Z = 49.82% ± 0.88%`，`Standard-BoN = 51.12% ± 0.92%`，三分支 `Hybrid-Adaptive` 达 **`50.83% ± 0.91%`**（优于 `Pooled` **`+2.15 pp`**, 95% CI `[+1.35, +2.96] pp`, $p_{\text{perm}} = 1.0\times 10^{-4}$；相对 `Standard-BoN` 为 `-0.29 pp`, $p_{\text{perm}} = 0.1298$ 无显著差异）；`S1a RB2 ($P=1,855, N=4$)` 上 `Hybrid` 5/5 折选中 `Standard-BoN` 达 **`87.23% ± 0.75%`**（优于 `Pooled` **`+2.09 pp`**, $p_{\text{perm}} = 1.0\times 10^{-4}$）。
+  - **`S4 AceMath ($P=8,987, N=64$)` & `S2 OlympiadBench ($P=674, N=128$)`**：`Within-Z` 相对 `Pooled` 净损 `-2.47 pp / -2.67 pp / -7.66 pp`（均 $p_{\text{perm}} = 1.0\times 10^{-4}$），三分支 `Hybrid` 在全部 15 个折叠上 `0` 次误选 `Within-Z`，与最优单分支无统计显著差异（$p_{\text{perm}} \in [0.51, 1.00]$）。
+  - **在线样本 $Z_{i,N}$ 一致极值收敛核验（定理 7C(4)）**：在 $N \in \{16, 64, 256, 1024, 4096\}$ 扫描下，$\mathbb{E}[\max_{i\le N}|Z_{i,N}-Z_i^*|] / \sqrt{(\ln N)/N}$ 稳定于 `1.115 → 0.967`，在线样本 $Z_{i,N}$ Oracle 准确率在 $N=4096$ 达 `43.12%`，收敛至总体 $Z^*$ 理论上限 `42.70%`（低于 `Standard-BoN` `45.00%`）。
 
 ### 4.2 核心图表
 

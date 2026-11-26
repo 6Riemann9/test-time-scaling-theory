@@ -1346,9 +1346,20 @@ def evaluate_real_prompt_heterogeneity(
     n_simpson_bins: int = 10,
     delta: float = 0.05,
     seed: int = 42,
-    n_bootstrap: int = 500,
+    n_bootstrap: int = 2_000,
+    n_permutations: int = 10_000,
 ) -> dict[str, Any]:
-    """在真实跨领域/多难度题目池上验证定理 7A 辛普森混杂遮蔽与定理 7B 题内 Z-Score 交叉。
+    """在真实跨领域/多难度题目池上验证定理 7A 辛普森混杂遮蔽与定理 7B/7C 三分支自适应切换。
+
+    统计推断说明：
+    - 门控选择（Hybrid-Adaptive-KL-LCB）：在每折训练集的严格不相交内部留出集 inner_val_idx 上，
+      从三元候选规则族 {Standard-BoN, Pooled-KL-LCB, Within-Prompt-Z-KL-LCB} 中按经验验证准确率择优
+      （N=2 时因题内 Z-Score 纯秩退化，在 {Standard-BoN, Pooled-KL-LCB} 上使用精确超几何无方差评估），
+      随后在全量训练折上重拟合校准器；
+    - 置信区间与标准误：对折外（out-of-fold）独立题目级得分向量执行 n_bootstrap 次 Paired Cluster Bootstrap；
+    - 假设检验 p 值：对配对题目级差异 d_j 执行 n_permutations 次 Rademacher 对称符号翻转置换检验，
+      采用 Phipson & Smyth (2010) 精确无偏修正 p = (1 + #{|d_bar^(b)| >= |d_bar_obs|}) / (1 + B_perm)，
+      保证 p >= 1 / (1 + B_perm) > 0；注意折外成簇推断条件于已拟合的交叉验证折模型（不重拟合每折分桶器）。
 
     Args:
         pools_with_strata: 题目序列，每项为 (stratum_name, scores_1d, is_correct_1d)。
@@ -1455,7 +1466,7 @@ def evaluate_real_prompt_heterogeneity(
         if within_s < -1e-4 and dq_p > 1e-4:
             masked_transitions += 1
 
-    # 2. 定理 7B 严格 5-Fold 按题 CV + 严格在线 N-样本 Z-Score 评估
+    # 2. 定理 7B/7C 严格 5-Fold 按题 CV + 三分支内部留出门控 + 严格在线 N-样本 Z-Score 评估
     n_arr = np.asarray(list(n_values), dtype=np.int64)
     n_probs = len(parsed)
     eff_folds = min(int(n_folds), n_probs)
@@ -1469,23 +1480,37 @@ def evaluate_real_prompt_heterogeneity(
         "Within-Prompt-Z-KL-LCB",
         "Hybrid-Adaptive-KL-LCB",
     ]
+    base_branches = ("Standard-BoN", "Pooled-KL-LCB", "Within-Prompt-Z-KL-LCB")
+    hybrid_branch_counts: dict[str, dict[str, int]] = {
+        str(int(nv)): {b_name: 0 for b_name in base_branches} for nv in n_arr
+    }
     prompt_acc = {a: np.full((n_probs, n_arr.size), np.nan, dtype=np.float64) for a in algo_names}
     eval_counts_by_n = np.zeros(n_arr.size, dtype=np.int64)
     n_t = float(n_trials_per_problem)
+    n_val_trials = max(12, min(int(n_trials_per_problem), 20))
 
     for f_idx in range(eff_folds):
         test_idx = folds[f_idx]
         train_idx = np.concatenate([folds[j] for j in range(eff_folds) if j != f_idx])
 
         # 严格互不相交的内部留出分割（inner_fit vs inner_val）：仅在 inner_fit 上拟合门控对比校准器，
-        # 在完全未参与拟合的 inner_val 上选择 N >= 4 分支，随后在全量 train_idx 上重拟合最终模型
-        hybrid_use_within_by_n: dict[int, bool] = {}
+        # 在完全未参与拟合的 inner_val 上从 {Standard-BoN, Pooled-KL-LCB, Within-Prompt-Z-KL-LCB} 择优。
+        # 使用独立子随机数流 val_rng，确保门控评估不扰动外部测试折抽样排列流 rng。
+        val_rng = np.random.default_rng(int(seed) + 50_003 + f_idx)
+        hybrid_branch_by_n: dict[int, str] = {}
         if len(train_idx) >= 2:
-            n_val = max(1, min(int(round(0.2 * len(train_idx))), 400))
-            if n_val >= len(train_idx):
-                n_val = len(train_idx) - 1
-            inner_val_idx = train_idx[:n_val]
-            inner_fit_idx = train_idx[n_val:]
+            if eff_folds >= 3:
+                # 标准嵌套交叉验证：轮换选取下一折作为不相交内部验证折，避免多折重复复用同一子集
+                inner_val_idx = folds[(f_idx + 1) % eff_folds]
+                inner_fit_idx = np.concatenate(
+                    [folds[j] for j in range(eff_folds) if j != f_idx and j != (f_idx + 1) % eff_folds]
+                )
+            else:
+                n_val = max(1, int(round(0.2 * len(train_idx))))
+                if n_val >= len(train_idx):
+                    n_val = len(train_idx) - 1
+                inner_val_idx = train_idx[:n_val]
+                inner_fit_idx = train_idx[n_val:]
 
             in_s = np.concatenate([parsed[i][1] for i in inner_fit_idx])
             in_y = np.concatenate([parsed[i][2] for i in inner_fit_idx]).astype(np.float64)
@@ -1498,28 +1523,60 @@ def evaluate_real_prompt_heterogeneity(
             pred_within_in, _ = _fit_sota_calibrator_predictor(
                 in_z, in_y, method="kl_lcb", n_bins=n_bins, delta=delta
             )
+            val_row_i = np.arange(n_val_trials)
             for nv in n_arr:
                 nv_int = int(nv)
-                if nv_int <= 2:
-                    hybrid_use_within_by_n[nv_int] = False
+                if nv_int <= 1:
+                    hybrid_branch_by_n[nv_int] = "Standard-BoN"
                     continue
-                pool_hits, within_hits, cal_cnt = 0.0, 0.0, 0
+                if nv_int == 2:
+                    # N=2 时题内 Z-Score 纯秩退化（定理 7B(2)），使用精确超几何无方差比较 Raw vs Pooled
+                    std_sum, pool_sum, v_cnt = 0.0, 0.0, 0
+                    for ci in inner_val_idx:
+                        _, cs, cy = parsed[ci]
+                        if cs.size < 2:
+                            continue
+                        std_sum += float(exact_pool_bon_accuracy(cs, cy, [2])[0])
+                        pool_sum += float(exact_pool_bon_accuracy(pred_pooled_in(cs), cy, [2])[0])
+                        v_cnt += 1
+                    if v_cnt == 0:
+                        hybrid_branch_by_n[nv_int] = "Pooled-KL-LCB"
+                    elif std_sum > pool_sum + 1e-12:
+                        hybrid_branch_by_n[nv_int] = "Standard-BoN"
+                    else:
+                        hybrid_branch_by_n[nv_int] = "Pooled-KL-LCB"
+                    continue
+
+                std_hits, pool_hits, within_hits, cal_cnt = 0.0, 0.0, 0.0, 0
                 for ci in inner_val_idx:
                     _, cs, cy = parsed[ci]
                     if cs.size < nv_int:
                         continue
-                    c_perms = np.array([rng.permutation(cs.size)[:nv_int] for _ in range(8)], dtype=np.int64)
+                    std_hits += float(exact_pool_bon_accuracy(cs, cy, [nv_int])[0]) * float(n_val_trials)
+                    pool_hits += float(exact_pool_bon_accuracy(pred_pooled_in(cs), cy, [nv_int])[0]) * float(n_val_trials)
+                    c_perms = np.array(
+                        [val_rng.permutation(cs.size)[:nv_int] for _ in range(n_val_trials)],
+                        dtype=np.int64,
+                    )
                     cs_mat = cs[c_perms]
                     cy_mat = cy[c_perms]
-                    row_i = np.arange(8)
-                    idx_p = _argmax_random_tie_2d(pred_pooled_in(cs_mat), rng)
-                    idx_w = _argmax_random_tie_2d(pred_within_in(_within_prompt_zscore_2d(cs_mat)), rng)
-                    pool_hits += float(np.count_nonzero(cy_mat[row_i, idx_p]))
-                    within_hits += float(np.count_nonzero(cy_mat[row_i, idx_w]))
-                    cal_cnt += 8
-                hybrid_use_within_by_n[nv_int] = (within_hits > pool_hits) if cal_cnt > 0 else False
+                    idx_w = _argmax_random_tie_2d(pred_within_in(_within_prompt_zscore_2d(cs_mat)), val_rng)
+                    within_hits += float(np.count_nonzero(cy_mat[val_row_i, idx_w]))
+                    cal_cnt += n_val_trials
+                if cal_cnt == 0:
+                    hybrid_branch_by_n[nv_int] = "Pooled-KL-LCB"
+                elif within_hits > max(pool_hits, std_hits) + 1e-12:
+                    hybrid_branch_by_n[nv_int] = "Within-Prompt-Z-KL-LCB"
+                elif std_hits > pool_hits + 1e-12:
+                    hybrid_branch_by_n[nv_int] = "Standard-BoN"
+                else:
+                    hybrid_branch_by_n[nv_int] = "Pooled-KL-LCB"
         else:
-            hybrid_use_within_by_n = {int(nv): False for nv in n_arr}
+            hybrid_branch_by_n = {int(nv): ("Standard-BoN" if int(nv) <= 1 else "Pooled-KL-LCB") for nv in n_arr}
+
+        for nv in n_arr:
+            nv_int = int(nv)
+            hybrid_branch_counts[str(nv_int)][hybrid_branch_by_n[nv_int]] += 1
 
         cal_s = np.concatenate([parsed[i][1] for i in train_idx])
         cal_y = np.concatenate([parsed[i][2] for i in train_idx]).astype(np.float64)
@@ -1559,10 +1616,12 @@ def evaluate_real_prompt_heterogeneity(
                 y_sub = y_full[:, :nv_int]
 
                 idx_std = _argmax_random_tie_2d(s_sub, rng)
-                prompt_acc["Standard-BoN"][p_idx, k_idx] = float(np.count_nonzero(y_sub[row_idx, idx_std])) / n_t
+                acc_std = float(np.count_nonzero(y_sub[row_idx, idx_std])) / n_t
+                prompt_acc["Standard-BoN"][p_idx, k_idx] = acc_std
 
                 idx_pool = _argmax_random_tie_2d(p_full[:, :nv_int], rng)
-                prompt_acc["Pooled-KL-LCB"][p_idx, k_idx] = float(np.count_nonzero(y_sub[row_idx, idx_pool])) / n_t
+                acc_pool = float(np.count_nonzero(y_sub[row_idx, idx_pool])) / n_t
+                prompt_acc["Pooled-KL-LCB"][p_idx, k_idx] = acc_pool
 
                 if nv_int == 1:
                     h_one = float(np.count_nonzero(y_sub[:, 0])) / n_t
@@ -1572,19 +1631,22 @@ def evaluate_real_prompt_heterogeneity(
                     z_sub = _within_prompt_zscore_2d(s_sub)
                     w_sub = pred_within(z_sub)
                     idx_within = _argmax_random_tie_2d(w_sub, rng)
-                    prompt_acc["Within-Prompt-Z-KL-LCB"][p_idx, k_idx] = (
-                        float(np.count_nonzero(y_sub[row_idx, idx_within])) / n_t
-                    )
-                    idx_hyb = idx_within if hybrid_use_within_by_n[nv_int] else idx_pool
-                    prompt_acc["Hybrid-Adaptive-KL-LCB"][p_idx, k_idx] = (
-                        float(np.count_nonzero(y_sub[row_idx, idx_hyb])) / n_t
-                    )
+                    acc_within = float(np.count_nonzero(y_sub[row_idx, idx_within])) / n_t
+                    prompt_acc["Within-Prompt-Z-KL-LCB"][p_idx, k_idx] = acc_within
+                    chosen_branch = hybrid_branch_by_n[nv_int]
+                    if chosen_branch == "Within-Prompt-Z-KL-LCB":
+                        prompt_acc["Hybrid-Adaptive-KL-LCB"][p_idx, k_idx] = acc_within
+                    elif chosen_branch == "Standard-BoN":
+                        prompt_acc["Hybrid-Adaptive-KL-LCB"][p_idx, k_idx] = acc_std
+                    else:
+                        prompt_acc["Hybrid-Adaptive-KL-LCB"][p_idx, k_idx] = acc_pool
 
     if np.any(eval_counts_by_n == 0):
         raise ValueError("存在没有任何题目满足 pool_size >= n 的预算值")
 
-    # 题目级 Paired Cluster Bootstrap SE / 95% CI 与配对差异检验（以独立题目为单位，消除同题多次试验伪重复）
+    # 题目级 Paired Cluster Bootstrap (SE / 95% CI) + Rademacher 符号翻转置换检验 (Phipson-Smyth p 值)
     n_boot = int(n_bootstrap)
+    n_perm = max(1, int(n_permutations))
     n_evaluated_problems_by_n = np.zeros(n_arr.size, dtype=np.int64)
     algo_results: dict[str, dict[str, np.ndarray]] = {
         a_name: {
@@ -1595,17 +1657,39 @@ def evaluate_real_prompt_heterogeneity(
         }
         for a_name in algo_names
     }
-    comp_algos = ("Within-Prompt-Z-KL-LCB", "Hybrid-Adaptive-KL-LCB")
-    paired_vs_pooled: dict[str, dict[str, np.ndarray]] = {
-        comp: {
-            "mean_diff": np.zeros(n_arr.size, dtype=np.float64),
-            "se_diff": np.zeros(n_arr.size, dtype=np.float64),
-            "ci_low": np.zeros(n_arr.size, dtype=np.float64),
-            "ci_high": np.zeros(n_arr.size, dtype=np.float64),
-            "p_value": np.ones(n_arr.size, dtype=np.float64),
+    comp_vs_pooled = ("Within-Prompt-Z-KL-LCB", "Hybrid-Adaptive-KL-LCB", "Standard-BoN")
+    comp_vs_std = ("Pooled-KL-LCB", "Within-Prompt-Z-KL-LCB", "Hybrid-Adaptive-KL-LCB")
+
+    def _init_paired_dict(keys: Sequence[str]) -> dict[str, dict[str, np.ndarray]]:
+        return {
+            k_name: {
+                "mean_diff": np.zeros(n_arr.size, dtype=np.float64),
+                "se_diff": np.zeros(n_arr.size, dtype=np.float64),
+                "ci_low": np.zeros(n_arr.size, dtype=np.float64),
+                "ci_high": np.zeros(n_arr.size, dtype=np.float64),
+                "p_value": np.ones(n_arr.size, dtype=np.float64),
+            }
+            for k_name in keys
         }
-        for comp in comp_algos
-    }
+
+    paired_vs_pooled = _init_paired_dict(comp_vs_pooled)
+    paired_vs_standard_bon = _init_paired_dict(comp_vs_std)
+
+    def _sign_flip_perm_pvalue(diff_vec: np.ndarray, perm_rng: np.random.Generator) -> float:
+        obs_abs = abs(float(np.mean(diff_vec)))
+        if obs_abs <= 1e-15 or float(np.max(np.abs(diff_vec))) <= 1e-15:
+            return 1.0
+        n_v = diff_vec.size
+        exceed = 0
+        chunk = 2_000
+        done = 0
+        while done < n_perm:
+            cur = min(chunk, n_perm - done)
+            signs = perm_rng.integers(0, 2, size=(cur, n_v), dtype=np.int8) * 2 - 1
+            perm_means = (signs.astype(np.float64) @ diff_vec) / float(n_v)
+            exceed += int(np.count_nonzero(np.abs(perm_means) >= obs_abs - 1e-15))
+            done += cur
+        return float((1 + exceed) / (1 + n_perm))
 
     for k_idx in range(n_arr.size):
         valid_mask = ~np.isnan(prompt_acc["Standard-BoN"][:, k_idx])
@@ -1615,9 +1699,13 @@ def evaluate_real_prompt_heterogeneity(
 
         for a_name in algo_names:
             algo_results[a_name]["accuracy"][k_idx] = float(np.mean(vec_valid[a_name]))
-        for comp in comp_algos:
+        for comp in comp_vs_pooled:
             paired_vs_pooled[comp]["mean_diff"][k_idx] = float(
                 np.mean(vec_valid[comp] - vec_valid["Pooled-KL-LCB"])
+            )
+        for comp in comp_vs_std:
+            paired_vs_standard_bon[comp]["mean_diff"][k_idx] = float(
+                np.mean(vec_valid[comp] - vec_valid["Standard-BoN"])
             )
 
         if n_valid <= 1 or n_boot < 2:
@@ -1625,18 +1713,26 @@ def evaluate_real_prompt_heterogeneity(
                 v = algo_results[a_name]["accuracy"][k_idx]
                 algo_results[a_name]["ci_low"][k_idx] = float(np.clip(v, 0.0, 1.0))
                 algo_results[a_name]["ci_high"][k_idx] = float(np.clip(v, 0.0, 1.0))
-            for comp in comp_algos:
+            for comp in comp_vs_pooled:
                 d = paired_vs_pooled[comp]["mean_diff"][k_idx]
                 paired_vs_pooled[comp]["ci_low"][k_idx] = d
                 paired_vs_pooled[comp]["ci_high"][k_idx] = d
+            for comp in comp_vs_std:
+                d = paired_vs_standard_bon[comp]["mean_diff"][k_idx]
+                paired_vs_standard_bon[comp]["ci_low"][k_idx] = d
+                paired_vs_standard_bon[comp]["ci_high"][k_idx] = d
             continue
 
         boot_rng = np.random.default_rng(int(seed) + 100_003 + k_idx)
         boot_means = {a_name: np.empty(n_boot, dtype=np.float64) for a_name in algo_names}
-        for b_i in range(n_boot):
-            idx_b = boot_rng.integers(0, n_valid, size=n_valid)
+        b_chunk = 500
+        b_done = 0
+        while b_done < n_boot:
+            cur_b = min(b_chunk, n_boot - b_done)
+            idx_mat = boot_rng.integers(0, n_valid, size=(cur_b, n_valid))
             for a_name in algo_names:
-                boot_means[a_name][b_i] = float(np.mean(vec_valid[a_name][idx_b]))
+                boot_means[a_name][b_done : b_done + cur_b] = np.mean(vec_valid[a_name][idx_mat], axis=1)
+            b_done += cur_b
 
         for a_name in algo_names:
             bm = boot_means[a_name]
@@ -1645,16 +1741,28 @@ def evaluate_real_prompt_heterogeneity(
             algo_results[a_name]["ci_low"][k_idx] = float(np.clip(q_lo, 0.0, 1.0))
             algo_results[a_name]["ci_high"][k_idx] = float(np.clip(q_hi, 0.0, 1.0))
 
+        perm_rng = np.random.default_rng(int(seed) + 200_003 + k_idx)
         bm_pool = boot_means["Pooled-KL-LCB"]
-        for comp in comp_algos:
+        for comp in comp_vs_pooled:
             bdiff = boot_means[comp] - bm_pool
             paired_vs_pooled[comp]["se_diff"][k_idx] = float(np.std(bdiff, ddof=1))
             d_lo, d_hi = np.percentile(bdiff, [2.5, 97.5])
             paired_vs_pooled[comp]["ci_low"][k_idx] = float(d_lo)
             paired_vs_pooled[comp]["ci_high"][k_idx] = float(d_hi)
-            p_le = float(np.mean(bdiff <= 0.0))
-            p_ge = float(np.mean(bdiff >= 0.0))
-            paired_vs_pooled[comp]["p_value"][k_idx] = float(min(1.0, 2.0 * min(p_le, p_ge)))
+            paired_vs_pooled[comp]["p_value"][k_idx] = _sign_flip_perm_pvalue(
+                vec_valid[comp] - vec_valid["Pooled-KL-LCB"], perm_rng
+            )
+
+        bm_std = boot_means["Standard-BoN"]
+        for comp in comp_vs_std:
+            bdiff_s = boot_means[comp] - bm_std
+            paired_vs_standard_bon[comp]["se_diff"][k_idx] = float(np.std(bdiff_s, ddof=1))
+            ds_lo, ds_hi = np.percentile(bdiff_s, [2.5, 97.5])
+            paired_vs_standard_bon[comp]["ci_low"][k_idx] = float(ds_lo)
+            paired_vs_standard_bon[comp]["ci_high"][k_idx] = float(ds_hi)
+            paired_vs_standard_bon[comp]["p_value"][k_idx] = _sign_flip_perm_pvalue(
+                vec_valid[comp] - vec_valid["Standard-BoN"], perm_rng
+            )
 
     return {
         "n_problems": n_probs,
@@ -1677,9 +1785,19 @@ def evaluate_real_prompt_heterogeneity(
         "n_values": n_arr,
         "eval_trials_by_n": eval_counts_by_n,
         "n_evaluated_problems_by_n": n_evaluated_problems_by_n,
+        "hybrid_candidate_family": list(base_branches),
+        "hybrid_branch_selection_counts": hybrid_branch_counts,
         "se_method": "prompt_cluster_bootstrap",
+        "p_value_method": "paired_sign_flip_permutation_phipson_smyth",
+        "inference_scope_note": (
+            "Out-of-fold prompt-cluster bootstrap and Rademacher sign-flip permutation "
+            "condition on fitted fold calibrators (capturing test-prompt sampling and "
+            "finite-trial candidate draw variance, without refitting fold calibrators per replicate)."
+        ),
         "n_bootstrap": n_boot,
+        "n_permutations": n_perm,
         "paired_bootstrap_vs_pooled": paired_vs_pooled,
+        "paired_bootstrap_vs_standard_bon": paired_vs_standard_bon,
         "algorithms": algo_results,
     }
 
