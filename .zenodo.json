@@ -1,0 +1,25 @@
+{
+  "title": "Joint Calibration\u2013Compute Limits of Test-Time Scaling: Minimax Theory, Prompt Heterogeneity, and Risk-Controlled Verifier Selection",
+  "upload_type": "software",
+  "description": "Best-of-N (BoN) scaling fails when heavy wrong-answer tails invert extreme verifier scores. Post-hoc calibration restores fixed-prompt monotonicity, yet practice faces finite offline labels (M), finite online candidates (N), and cross-prompt heterogeneity. Within a two-level hierarchical probabilistic framework, this repository and accompanying NeurIPS 2026 manuscript establish: (1) decoupled minimax simple regret Theta((ln M / M)^(beta/(2*beta+1)) + N^(-beta)) over uniformly beta-smooth peak classes via N-agnostic equal-frequency KL-LCB and sample-split Uniform spacings for all beta > 0; (2) exact Simpson derivative decomposition with grid-free masking, O_p(sqrt((ln N)/N)) online sample Z-score convergence with an affine-invariant asymptotic ceiling loss when pi_0 > 0 = pi_1 with positive interior solvable prompt mass, and a three-branch holdout risk-control selector (Hybrid-Fixed); and (3) multi-verifier Gaussian spectral paths (with degenerate orthogonal boundaries) and Gaussian-Copula tail criteria. Includes full proofs, NeurIPS 2026 paper source and compiled PDF, deterministic reproduction scripts across >1.1e6 trajectories on five public benchmarks, and 76 offline unit tests.",
+  "creators": [
+    {
+      "name": "Zhang, Xinkang",
+      "affiliation": "Independent Researcher",
+      "orcid": "0009-0007-5524-7050"
+    }
+  ],
+  "access_right": "open",
+  "license": "MIT",
+  "language": "eng",
+  "keywords": [
+    "test-time scaling",
+    "best-of-n",
+    "verifier overoptimization",
+    "minimax theory",
+    "post-hoc calibration",
+    "simpson paradox",
+    "large language models",
+    "reward models"
+  ]
+}

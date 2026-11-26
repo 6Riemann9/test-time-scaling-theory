@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this software or cite the accompanying theory, please cite it using these metadata."
+type: software
+title: "Joint Calibration-Compute Limits of Test-Time Scaling: Minimax Theory, Prompt Heterogeneity, and Risk-Controlled Verifier Selection"
+version: "1.0.0"
+date-released: "2026-11-26"
+license: MIT
+repository-code: "https://github.com/6Riemann9/test-time-scaling-theory"
+url: "https://github.com/6Riemann9/test-time-scaling-theory"
+abstract: >-
+  Probability theory, minimax analysis, prompt heterogeneity risk-control algorithms,
+  multi-verifier Gaussian/Copula tail criteria, deterministic benchmark verification scripts,
+  and the accompanying NeurIPS 2026 manuscript on Test-Time Scaling.
+keywords:
+  - test-time scaling
+  - best-of-n
+  - verifier overoptimization
+  - minimax theory
+  - post-hoc calibration
+  - simpson paradox
+  - large language models
+  - reward models
+authors:
+  - family-names: "Zhang"
+    given-names: "Xinkang"
+    affiliation: "Independent Researcher"
+    email: "3203235490@qq.com"
+    orcid: "https://orcid.org/0009-0007-5524-7050"
+preferred-citation:
+  type: generic
+  title: "Joint Calibration-Compute Limits of Test-Time Scaling: Minimax Theory, Prompt Heterogeneity, and Risk-Controlled Verifier Selection"
+  authors:
+    - family-names: "Zhang"
+      given-names: "Xinkang"
+      affiliation: "Independent Researcher"
+      email: "3203235490@qq.com"
+      orcid: "https://orcid.org/0009-0007-5524-7050"
+  year: 2026
+  url: "https://github.com/6Riemann9/test-time-scaling-theory"
