@@ -19,6 +19,7 @@ from tts_theory.calibration_theory import (
     exact_conditional_bin_bon_accuracy,
     joint_calibration_compute_scaling,
     simulate_finite_calibration_scaling,
+    tight_joint_minimax_scaling,
 )
 from tts_theory.ensemble_theory import (
     GaussianCopulaHeavyTailSpec,
@@ -27,12 +28,14 @@ from tts_theory.ensemble_theory import (
     HeterogeneousVulnerabilitySpec,
     MinEnsembleVerifierSpec,
     MultiVerifierGaussianSpec,
+    bayes_qda_multi_verifier_analysis,
     ensemble_phase_reversal_criterion,
     gaussian_copula_heavy_tail_criterion,
     general_min_ensemble_qp_criterion,
     general_min_tail_asymptotic_constants,
     heavy_tail_separation_criterion,
     optimal_linear_ensemble_criterion,
+    pareto_linear_ensemble_frontier,
     simulate_multi_verifier_bon,
     solve_positive_quadrant_qp,
 )
@@ -40,7 +43,9 @@ from tts_theory.heterogeneity_theory import (
     PromptHeterogeneitySpec,
     diagnose_simpson_confounding,
     diagnose_within_prompt_residual,
+    diagnose_zscore_induced_collapse,
     evaluate_pooled_vs_within_prompt_calibration,
+    simulate_zscore_induced_collapse,
 )
 from tts_theory.integrals import (
     exact_bon_accuracy,
@@ -120,7 +125,7 @@ __all__ = [
     "CalibratedWeightedBoN",
     "TwoStageVerifiedMajority",
     "MajorityVoting",
-    # V2 & V4/V5 多裁判相变逆转与重尾/Copula 统一理论（定理 5）
+    # V2 & V4/V5/V6 多裁判相变逆转与重尾/Copula/Pareto/QDA 统一理论（定理 5）
     "MultiVerifierGaussianSpec",
     "GeneralGaussianMultiVerifierSpec",
     "MinEnsembleVerifierSpec",
@@ -130,24 +135,29 @@ __all__ = [
     "solve_positive_quadrant_qp",
     "general_min_tail_asymptotic_constants",
     "optimal_linear_ensemble_criterion",
+    "pareto_linear_ensemble_frontier",
+    "bayes_qda_multi_verifier_analysis",
     "general_min_ensemble_qp_criterion",
     "ensemble_phase_reversal_criterion",
     "heavy_tail_separation_criterion",
     "gaussian_copula_heavy_tail_criterion",
     "simulate_multi_verifier_bon",
-    # V2 & V4/V5 有限校准集二次坍塌、KL-LCB 与联合标度（定理 6）
+    # V2 & V4/V5/V6 有限校准集二次坍塌、KL-LCB 与零间隙联合标度（定理 6）
     "build_score_bins",
     "exact_conditional_bin_bon_accuracy",
     "compute_bin_calibrator_scores",
     "bernstein_zero_collapse_threshold",
     "calibration_minimax_scaling",
     "joint_calibration_compute_scaling",
+    "tight_joint_minimax_scaling",
     "simulate_finite_calibration_scaling",
-    # V4/V5 题目异质性、辛普森悖论与题内标准化（定理 7）
+    # V4/V5/V6 题目异质性、辛普森悖论、题内标准化与 Z 诱导坍塌（定理 7）
     "PromptHeterogeneitySpec",
     "diagnose_simpson_confounding",
     "diagnose_within_prompt_residual",
+    "diagnose_zscore_induced_collapse",
     "evaluate_pooled_vs_within_prompt_calibration",
+    "simulate_zscore_induced_collapse",
     # V3/Stage2 真实大模型候选池与开源 RM 评估接口
     "extract_boxed_answer",
     "normalize_math_answer",

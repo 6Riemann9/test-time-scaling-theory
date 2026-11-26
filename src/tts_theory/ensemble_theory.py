@@ -1238,6 +1238,309 @@ def _sample_multi_verifier_scores(
     raise TypeError(f"不支持的多裁判规格类型: {type(spec)!r}")
 
 
+def pareto_linear_ensemble_frontier(
+    spec: GeneralGaussianMultiVerifierSpec,
+    kappa_max: float = 1.0,
+    n_path_points: int = 25,
+) -> dict:
+    """求解有限 N 信噪比与渐近尾方差比的凸化 S-Lemma 帕累托最优光谱路径（定理 5A-III）。
+
+    在联合对角化坐标 P^T Sigma_1 P = I_K, P^T Sigma_0 P = diag(lams), d = P^T (mu1 - mu0) 下，
+    对于约束 max_{w != 0} (w^T dmu)^2 / (w^T (Sigma_1 + Sigma_0) w)  s.t.  kappa(w) <= kappa_max：
+    - tau = -1 对应 Fisher / Logit 方向（N=2 全局最优 SNR）；
+    - tau 沿 [-1, lambda_min) 递增对应严格帕累托前沿 w_tau = (Sigma_0 - tau Sigma_1)^{-1} dmu；
+    - tau^* 处恰取到安全门槛 kappa(w_{tau^*}) = kappa_max（含正交退化边界精确闭式分支）。
+    """
+    if float(kappa_max) <= 0.0:
+        raise ValueError(f"kappa_max 必须 > 0，当前收到: {kappa_max}")
+    if int(n_path_points) < 3:
+        raise ValueError(f"n_path_points 必须 >= 3，当前收到: {n_path_points}")
+
+    c1 = spec.cov1_arr
+    c0 = spec.cov0_arr
+    dmu = spec.mu1_arr - spec.mu0_arr
+    kappa_max_sq = float(kappa_max) ** 2
+
+    # 联合对角化：L1^{-1} C0 L1^{-T} = U diag(lams) U^T，P = L1^{-T} U
+    l1 = np.linalg.cholesky(c1)
+    l1_inv = np.linalg.inv(l1)
+    mat_sym = 0.5 * ((l1_inv @ c0 @ l1_inv.T) + (l1_inv @ c0 @ l1_inv.T).T)
+    lams, u_mat = np.linalg.eigh(mat_sym)
+    lams = np.maximum(lams, 1e-15)
+    p_mat = l1_inv.T @ u_mat
+    d = p_mat.T @ dmu
+    d_sq = d * d
+    lam_min = float(lams[0])
+
+    def _orient_unit(w_raw: np.ndarray) -> np.ndarray:
+        proj = float(w_raw @ dmu)
+        if proj < 0.0 or (abs(proj) <= 1e-12 and float(np.sum(w_raw)) < 0.0):
+            w_raw = -w_raw
+        norm = float(np.linalg.norm(w_raw))
+        return w_raw / max(norm, 1e-15)
+
+    def _metrics_from_v(v: np.ndarray) -> tuple[np.ndarray, float, float]:
+        v_sq = v * v
+        denom1 = max(float(np.sum(v_sq)), 1e-30)
+        denom0 = max(float(np.sum(lams * v_sq)), 1e-30)
+        ratio = denom0 / denom1
+        num_snr = float(np.sum(d * v)) ** 2
+        den_snr = max(float(np.sum((1.0 + lams) * v_sq)), 1e-30)
+        snr2 = num_snr / den_snr
+        w_unit = _orient_unit(p_mat @ v)
+        return w_unit, ratio, snr2
+
+    if float(np.sum(d_sq)) <= 1e-24:
+        v0 = np.zeros_like(lams)
+        v0[0] = 1.0
+        w0, ratio0, snr0 = _metrics_from_v(v0)
+        return {
+            "tau_star": float(lam_min),
+            "feasible": bool(lam_min <= kappa_max_sq + 1e-12),
+            "regime": "zero_mean_diff",
+            "lambda_min": lam_min,
+            "kappa_max": float(kappa_max),
+            "w_fisher": w0,
+            "kappa_fisher": math.sqrt(ratio0),
+            "snr2_fisher": snr0,
+            "w_safe": w0,
+            "kappa_safe": math.sqrt(ratio0),
+            "snr2_safe": snr0,
+            "tau_grid": np.array([-1.0], dtype=np.float64),
+            "kappa_path": np.array([math.sqrt(ratio0)], dtype=np.float64),
+            "snr2_path": np.array([snr0], dtype=np.float64),
+            "snr2_deriv_path": np.array([0.0], dtype=np.float64),
+            "ratio_deriv_path": np.array([0.0], dtype=np.float64),
+            "snr2_deriv_nonpositive": True,
+            "ratio_deriv_nonpositive": True,
+        }
+
+    def _ratio_and_derivs(tau: float) -> tuple[float, float, float, float]:
+        diff = lams - tau
+        v = d / diff
+        a_val = float(np.sum(d_sq / diff))
+        c_val = float(np.sum(d_sq / (diff * diff)))
+        d_val = float(np.sum(d_sq / (diff * diff * diff)))
+        b_val = a_val + (1.0 + tau) * c_val
+        ratio = tau + a_val / max(c_val, 1e-30)
+        snr2 = (a_val * a_val) / max(b_val, 1e-30)
+        ratio_deriv = 2.0 * (c_val * c_val - a_val * d_val) / max(c_val * c_val, 1e-30)
+        snr2_deriv = (
+            2.0
+            * (1.0 + tau)
+            * a_val
+            * (c_val * c_val - a_val * d_val)
+            / max(b_val * b_val, 1e-30)
+        )
+        return ratio, snr2, ratio_deriv, snr2_deriv
+
+    # tau = -1: Fisher / Logit N=2 最优方向
+    v_fisher = d / (lams + 1.0)
+    w_fisher, ratio_fisher, snr2_fisher = _metrics_from_v(v_fisher)
+
+    tol_eig = 1e-11 * max(1.0, lam_min)
+    i_min = np.flatnonzero(lams <= lam_min + tol_eig)
+    i_rest = np.flatnonzero(lams > lam_min + tol_eig)
+    feasible = bool(lam_min <= kappa_max_sq + 1e-12)
+
+    if not feasible:
+        tau_star = -1.0
+        w_safe = w_fisher
+        ratio_safe = ratio_fisher
+        snr2_safe = snr2_fisher
+        regime = "infeasible_irreversible"
+    elif ratio_fisher <= kappa_max_sq + 1e-12:
+        tau_star = -1.0
+        w_safe = w_fisher
+        ratio_safe = ratio_fisher
+        snr2_safe = snr2_fisher
+        regime = "fisher_already_safe"
+    elif abs(lam_min - kappa_max_sq) <= 1e-11 * max(1.0, kappa_max_sq):
+        v_bnd = np.zeros_like(lams)
+        if float(np.sum(d_sq[i_min])) > 1e-24:
+            v_bnd[i_min] = d[i_min]
+        else:
+            v_bnd[i_min[0]] = 1.0
+        tau_star = lam_min
+        w_safe, ratio_safe, snr2_safe = _metrics_from_v(v_bnd)
+        regime = "boundary_eigenvalue"
+    else:
+        d_min_sq = float(np.sum(d_sq[i_min]))
+        hi = lam_min - 1e-9 * max(1.0, lam_min)
+        if d_min_sq > 1e-22:
+            r_hi, _, _, _ = _ratio_and_derivs(hi)
+            if r_hi < kappa_max_sq:
+                tau_star = float(
+                    optimize.brentq(lambda t: _ratio_and_derivs(t)[0] - kappa_max_sq, -1.0, hi)
+                )
+            else:
+                tau_star = hi
+            w_safe, ratio_safe, snr2_safe = _metrics_from_v(d / (lams - tau_star))
+            regime = "pareto_interior"
+        else:
+            # 退化正交情形：最小特征空间内 d_{I_min} == 0，检查正交极限比值 R_lim
+            v_perp = np.zeros_like(lams)
+            if i_rest.size > 0:
+                v_perp[i_rest] = d[i_rest] / (lams[i_rest] - lam_min)
+                r_lim = float(np.sum(lams[i_rest] * (v_perp[i_rest] ** 2))) / max(
+                    float(np.sum(v_perp[i_rest] ** 2)), 1e-30
+                )
+            else:
+                r_lim = lam_min
+            if r_lim < kappa_max_sq - 1e-12:
+                tau_star = float(
+                    optimize.brentq(lambda t: _ratio_and_derivs(t)[0] - kappa_max_sq, -1.0, hi)
+                )
+                w_safe, ratio_safe, snr2_safe = _metrics_from_v(d / (lams - tau_star))
+                regime = "pareto_interior"
+            else:
+                # 边界解 tau* = lam_min：在最小特征方向按精确二次约束混合正交分量
+                v_bnd = v_perp.copy()
+                excess = float(np.sum((lams[i_rest] - kappa_max_sq) * (v_perp[i_rest] ** 2)))
+                c_coef = math.sqrt(max(0.0, excess) / max(kappa_max_sq - lam_min, 1e-15))
+                v_bnd[i_min[0]] = c_coef
+                tau_star = lam_min
+                w_safe, ratio_safe, snr2_safe = _metrics_from_v(v_bnd)
+                regime = "degenerate_orthogonal_boundary"
+
+    # 生成沿光谱路径的帕累托扫描数组与一阶导数符号校验
+    span = lam_min + 1.0
+    if span > 1e-6:
+        offsets = np.geomspace(span, max(1e-6 * span, 1e-9), int(n_path_points))
+        tau_grid = np.unique(np.clip(lam_min - offsets, -1.0, lam_min - 1e-9 * max(1.0, lam_min)))
+        if tau_grid[0] > -1.0 + 1e-12:
+            tau_grid = np.concatenate([np.array([-1.0]), tau_grid])
+    else:
+        tau_grid = np.array([-1.0], dtype=np.float64)
+
+    kappa_path = np.empty_like(tau_grid)
+    snr2_path = np.empty_like(tau_grid)
+    snr2_deriv_path = np.empty_like(tau_grid)
+    ratio_deriv_path = np.empty_like(tau_grid)
+    for idx_t, t_val in enumerate(tau_grid):
+        r_t, s_t, rd_t, sd_t = _ratio_and_derivs(float(t_val))
+        kappa_path[idx_t] = math.sqrt(max(0.0, r_t))
+        snr2_path[idx_t] = s_t
+        ratio_deriv_path[idx_t] = rd_t
+        snr2_deriv_path[idx_t] = sd_t
+
+    return {
+        "tau_star": float(tau_star),
+        "feasible": feasible,
+        "regime": regime,
+        "lambda_min": lam_min,
+        "kappa_max": float(kappa_max),
+        "w_fisher": w_fisher,
+        "kappa_fisher": math.sqrt(max(0.0, ratio_fisher)),
+        "snr2_fisher": float(snr2_fisher),
+        "w_safe": w_safe,
+        "kappa_safe": math.sqrt(max(0.0, ratio_safe)),
+        "snr2_safe": float(snr2_safe),
+        "tau_grid": tau_grid,
+        "kappa_path": kappa_path,
+        "snr2_path": snr2_path,
+        "snr2_deriv_path": snr2_deriv_path,
+        "ratio_deriv_path": ratio_deriv_path,
+        "snr2_deriv_nonpositive": bool(np.all(snr2_deriv_path <= 1e-12)),
+        "ratio_deriv_nonpositive": bool(np.all(ratio_deriv_path <= 1e-12)),
+    }
+
+
+def bayes_qda_multi_verifier_analysis(spec: GeneralGaussianMultiVerifierSpec) -> dict:
+    """计算多裁判一般高斯族的精确 Bayes QDA 判别面、不可逆天花板与 N^{-2/K} 维度诅咒速率（定理 5A-III）。"""
+    k = spec.num_verifiers
+    p = float(spec.p)
+    mu1 = spec.mu1_arr
+    mu0 = spec.mu0_arr
+    c1 = spec.cov1_arr
+    c0 = spec.cov0_arr
+    dmu = mu1 - mu0
+
+    c1_inv = np.linalg.inv(c1)
+    c0_inv = np.linalg.inv(c0)
+    a_qda = 0.5 * (c0_inv - c1_inv)
+    a_qda = 0.5 * (a_qda + a_qda.T)
+    b_qda = c1_inv @ mu1 - c0_inv @ mu0
+    _, logdet1 = np.linalg.slogdet(c1)
+    _, logdet0 = np.linalg.slogdet(c0)
+    c0_qda = 0.5 * (
+        float(logdet0 - logdet1)
+        + float(mu0 @ c0_inv @ mu0)
+        - float(mu1 @ c1_inv @ mu1)
+    )
+
+    l1 = np.linalg.cholesky(c1)
+    l1_inv = np.linalg.inv(l1)
+    mat_sym = 0.5 * ((l1_inv @ c0 @ l1_inv.T) + (l1_inv @ c0 @ l1_inv.T).T)
+    eigvals = np.linalg.eigvalsh(mat_sym)
+    lam_min = float(max(0.0, eigvals[0]))
+
+    irreversible = bool(lam_min > 1.0 + 1e-10)
+    if not irreversible:
+        return {
+            "num_verifiers": k,
+            "lambda_min": lam_min,
+            "is_irreversible_linear_collapse": False,
+            "has_finite_bayes_ceiling": False,
+            "bayes_ceiling_q": 1.0,
+            "ell_peak_qda": float("inf"),
+            "s_star": None,
+            "f_mix_star": None,
+            "c_k": None,
+            "asymptotic_coef_a_k": None,
+            "curse_rate_exponent": 0.0,
+            "a_qda": a_qda,
+            "b_qda": b_qda,
+            "c0_qda": c0_qda,
+        }
+
+    # 不可逆相 (Sigma_0 > Sigma_1)：精确唯一峰值与闭式天花板 q_Bayes^* < 1
+    h_neg = 0.5 * ((c1_inv - c0_inv) + (c1_inv - c0_inv).T)
+    s_star = np.linalg.solve(h_neg, b_qda)
+    diff_cov = 0.5 * ((c0 - c1) + (c0 - c1).T)
+    ell_peak = 0.5 * float(logdet0 - logdet1) + 0.5 * float(dmu @ np.linalg.solve(diff_cov, dmu))
+    logit_p = math.log(p / (1.0 - p))
+    q_star = float(special.expit(logit_p + ell_peak))
+
+    # 峰值处混合密度 f_mix(s*)
+    d1 = s_star - mu1
+    d0 = s_star - mu0
+    log_f1 = -0.5 * float(k) * math.log(2.0 * math.pi) - 0.5 * float(logdet1) - 0.5 * float(d1 @ c1_inv @ d1)
+    log_f0 = -0.5 * float(k) * math.log(2.0 * math.pi) - 0.5 * float(logdet0) - 0.5 * float(d0 @ c0_inv @ d0)
+    f_mix_star = float(p * math.exp(log_f1) + (1.0 - p) * math.exp(log_f0))
+
+    # K 维椭球水平集系数 c_K 与渐近主项系数 A_K = Gamma(1 + 2/K) / c_K^{2/K}
+    _, logdet_h = np.linalg.slogdet(h_neg)
+    q_var = max(q_star * (1.0 - q_star), 1e-30)
+    log_c_k = (
+        math.log(max(f_mix_star, 1e-300))
+        + 0.5 * float(k) * math.log(2.0 * math.pi)
+        - math.lgamma(0.5 * float(k) + 1.0)
+        - 0.5 * float(k) * math.log(q_var)
+        - 0.5 * float(logdet_h)
+    )
+    c_k = float(math.exp(log_c_k))
+    rate_exp = 2.0 / float(k)
+    a_k = float(math.gamma(1.0 + rate_exp) / (c_k**rate_exp))
+
+    return {
+        "num_verifiers": k,
+        "lambda_min": lam_min,
+        "is_irreversible_linear_collapse": True,
+        "has_finite_bayes_ceiling": True,
+        "bayes_ceiling_q": q_star,
+        "ell_peak_qda": float(ell_peak),
+        "s_star": s_star,
+        "f_mix_star": f_mix_star,
+        "c_k": c_k,
+        "asymptotic_coef_a_k": a_k,
+        "curse_rate_exponent": rate_exp,
+        "a_qda": a_qda,
+        "b_qda": b_qda,
+        "c0_qda": c0_qda,
+    }
+
+
 def simulate_multi_verifier_bon(
     spec: Union[
         MultiVerifierGaussianSpec,
@@ -1253,19 +1556,27 @@ def simulate_multi_verifier_bon(
     batch_size: int = 5_000,
     weights: Sequence[float] | np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
-    """流式分块向量化仿真多裁判融合（Min / Mean / Linear-Ensemble）的 Best-of-N 正确率。
+    """流式分块向量化仿真多裁判融合（Min / Mean / Linear-Ensemble / QDA）的 Best-of-N 正确率。
 
     采用按采样预算增量滚动更新最大值，单块三维张量内存严格控制在 ~32 MB 以内。
     """
-    if aggregation not in ("min", "mean", "linear"):
-        raise ValueError(f"aggregation 必须为 'min', 'mean' 或 'linear'，当前收到: {aggregation!r}")
+    if aggregation not in ("min", "mean", "linear", "qda"):
+        raise ValueError(f"aggregation 必须为 'min', 'mean', 'linear' 或 'qda'，当前收到: {aggregation!r}")
     w_arr: np.ndarray | None = None
+    a_qda: np.ndarray | None = None
+    b_qda: np.ndarray | None = None
     if aggregation == "linear":
         if weights is None:
             raise ValueError("aggregation='linear' 时必须提供一维权重向量 weights")
         w_arr = np.asarray(weights, dtype=np.float64).ravel()
         if w_arr.size != int(spec.num_verifiers):
             raise ValueError(f"weights 长度 ({w_arr.size}) 必须等于 num_verifiers ({spec.num_verifiers})")
+    elif aggregation == "qda":
+        if not isinstance(spec, GeneralGaussianMultiVerifierSpec):
+            raise TypeError("aggregation='qda' 仅支持 GeneralGaussianMultiVerifierSpec")
+        qda_info = bayes_qda_multi_verifier_analysis(spec)
+        a_qda = np.asarray(qda_info["a_qda"], dtype=np.float64)
+        b_qda = np.asarray(qda_info["b_qda"], dtype=np.float64)
     if n_trials < 1 or batch_size < 1:
         raise ValueError("n_trials 与 batch_size 必须 >= 1")
 
@@ -1300,9 +1611,13 @@ def simulate_multi_verifier_bon(
                     agg_scores = np.min(raw_scores, axis=2)
                 elif aggregation == "mean":
                     agg_scores = np.mean(raw_scores, axis=2)
-                else:
+                elif aggregation == "linear":
                     assert w_arr is not None
                     agg_scores = raw_scores @ w_arr
+                else:
+                    assert a_qda is not None and b_qda is not None
+                    quad = np.einsum("bnk,kl,bnl->bn", raw_scores, a_qda, raw_scores)
+                    agg_scores = quad + (raw_scores @ b_qda)
 
                 # 滚动更新批内最大值及水塘平局随机打破
                 chunk_max = np.max(agg_scores, axis=1)
@@ -1354,12 +1669,14 @@ __all__ = [
     "HeterogeneousVulnerabilitySpec",
     "MinEnsembleVerifierSpec",
     "MultiVerifierGaussianSpec",
+    "bayes_qda_multi_verifier_analysis",
     "ensemble_phase_reversal_criterion",
     "gaussian_copula_heavy_tail_criterion",
     "general_min_ensemble_qp_criterion",
     "general_min_tail_asymptotic_constants",
     "heavy_tail_separation_criterion",
     "optimal_linear_ensemble_criterion",
+    "pareto_linear_ensemble_frontier",
     "simulate_multi_verifier_bon",
     "solve_positive_quadrant_qp",
 ]

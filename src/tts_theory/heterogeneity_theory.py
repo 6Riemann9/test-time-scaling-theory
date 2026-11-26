@@ -459,9 +459,218 @@ def diagnose_within_prompt_residual(spec: PromptHeterogeneitySpec) -> dict:
     }
 
 
+def diagnose_zscore_induced_collapse(
+    prompt_weights: ArrayLike,
+    prompt_p: ArrayLike,
+    mu1_base: float = 1.5,
+    sigma1_base: float = 1.0,
+    mu0_base: float = 0.0,
+    sigma0_base: float = 1.0,
+    z_grid: ArrayLike | None = None,
+) -> dict:
+    """诊断题内 Z-Score 标准化自诱导异方差与不可解题尾主导坍塌（定理 7C）。
+
+    原生支持边界原子层 p_g in {0.0, 1.0}：即使基底 Verifier 严格同方差单调 (kappa=1, dmu>0)，
+    对题内 Z-Score 池化后仍因边界原子方差保持 1 而内点可解题方差 < 1，在 Z 空间诱导出
+    kappa_Z > 1 与精确右尾极限 pi_1 / (pi_0 + pi_1)（pi_1=0 < pi_0 时跌向 0 并诱导大 N 坍塌）。
+    """
+    w = np.asarray(prompt_weights, dtype=np.float64).ravel()
+    p_arr = np.asarray(prompt_p, dtype=np.float64).ravel()
+    if w.size == 0 or p_arr.shape != w.shape or np.any(w <= 0.0):
+        raise ValueError("prompt_weights 与 prompt_p 必须为非空等长正权数组")
+    if np.any((p_arr < 0.0) | (p_arr > 1.0)):
+        raise ValueError("prompt_p 分量必须位于闭区间 [0, 1] 内")
+    w = w / float(np.sum(w))
+    p_bar = float(np.sum(w * p_arr))
+    if not (0.0 < p_bar < 1.0):
+        raise ValueError("混合先验均正确率必须严格位于 (0, 1) 内")
+    if float(sigma1_base) <= 0.0 or float(sigma0_base) <= 0.0:
+        raise ValueError("sigma1_base 与 sigma0_base 必须严格为正")
+
+    if z_grid is None:
+        grid = np.linspace(-3.5, 6.0, 951, dtype=np.float64)
+    else:
+        grid = np.asarray(z_grid, dtype=np.float64).ravel()
+        if grid.size < 5:
+            raise ValueError("z_grid 至少需要 5 个网格点")
+
+    s1 = float(sigma1_base)
+    s0 = float(sigma0_base)
+    dmu = float(mu1_base) - float(mu0_base)
+    mu_tilde = float(mu0_base) + p_arr * dmu
+    var_tilde = p_arr * (s1 * s1) + (1.0 - p_arr) * (s0 * s0) + p_arr * (1.0 - p_arr) * (dmu * dmu)
+    std_tilde = np.sqrt(var_tilde)
+
+    m1_g = (float(mu1_base) - mu_tilde) / std_tilde
+    sd1_g = s1 / std_tilde
+    m0_g = (float(mu0_base) - mu_tilde) / std_tilde
+    sd0_g = s0 / std_tilde
+
+    # 由全方差公式精确计算大 N Z-空间条件方差与 kappa_Z = sqrt(Var(Z*|Y=0)/Var(Z*|Y=1))
+    alpha1 = (w * p_arr) / p_bar
+    alpha0 = (w * (1.0 - p_arr)) / (1.0 - p_bar)
+    ez_pos = float(np.sum(alpha1 * m1_g))
+    ez_neg = float(np.sum(alpha0 * m0_g))
+    var_z_pos = float(np.sum(alpha1 * (sd1_g * sd1_g + m1_g * m1_g)) - ez_pos * ez_pos)
+    var_z_neg = float(np.sum(alpha0 * (sd0_g * sd0_g + m0_g * m0_g)) - ez_neg * ez_neg)
+    kappa_z = math.sqrt(max(var_z_neg, 1e-30) / max(var_z_pos, 1e-30))
+
+    # 精确解析计算 Z-空间池化密度与后验 q_{pool, Z}(z)
+    pos_idx = np.flatnonzero(p_arr > 0.0)
+    neg_idx = np.flatnonzero(p_arr < 1.0)
+    log_pos_comp = np.array(
+        [math.log(float(w[g] * p_arr[g])) + _norm_logpdf(grid, float(m1_g[g]), float(sd1_g[g])) for g in pos_idx]
+    )
+    log_neg_comp = np.array(
+        [
+            math.log(float(w[g] * (1.0 - p_arr[g]))) + _norm_logpdf(grid, float(m0_g[g]), float(sd0_g[g]))
+            for g in neg_idx
+        ]
+    )
+    log_pos = _logsumexp_components(log_pos_comp)
+    log_neg = _logsumexp_components(log_neg_comp)
+    q_pool_z = np.asarray(special.expit(log_pos - log_neg), dtype=np.float64)
+
+    pi_0 = float(np.sum(w[p_arr <= 1e-15]))
+    pi_1 = float(np.sum(w[p_arr >= 1.0 - 1e-15]))
+    if pi_0 + pi_1 > 0.0 and abs(s1 - s0) <= 1e-12:
+        z_tail_limit = float(pi_1 / (pi_0 + pi_1))
+    else:
+        # 比较全部正层与负层最小二次指数率 1/(2 sd^2)
+        min_rate_pos = float(np.min(0.5 / (sd1_g[pos_idx] ** 2)))
+        min_rate_neg = float(np.min(0.5 / (sd0_g[neg_idx] ** 2)))
+        if abs(min_rate_pos - min_rate_neg) > 1e-12:
+            z_tail_limit = 1.0 if min_rate_pos < min_rate_neg else 0.0
+        else:
+            q_tail = float(q_pool_z[-1])
+            z_tail_limit = q_tail
+
+    peak_idx = int(np.argmax(q_pool_z))
+    z_peak = float(grid[peak_idx])
+    q_z_peak = float(q_pool_z[peak_idx])
+    tail_turn_down = bool(float(q_pool_z[-1]) < q_z_peak - 1e-3)
+
+    # 比较大 N 极限：Standard-BoN vs Oracle Within-Z-Cal-BoN
+    # 当基底同方差 (s0 <= s1, dmu > 0) 时，所有 0 < p_g < 1 可解题 Raw-BoN 渐近达 1，故总极限 = 1 - pi_0
+    if s0 < s1 - 1e-12 or (abs(s0 - s1) <= 1e-12 and dmu > 0.0):
+        raw_bon_asymptotic_acc = float(1.0 - pi_0)
+    elif abs(s0 - s1) <= 1e-12 and abs(dmu) <= 1e-12:
+        raw_bon_asymptotic_acc = p_bar
+    else:
+        raw_bon_asymptotic_acc = float(pi_1)
+
+    # Oracle Z-校准按 q_pool_z(z) 选样：大 N 时内点可解题全部集中在 z_peak 附近
+    solvable_interior = (p_arr > 0.0) & (p_arr < 1.0)
+    oracle_z_acc = float(pi_1)
+    if np.any(solvable_interior):
+        for g in np.flatnonzero(solvable_interior):
+            lp_g = math.log(float(p_arr[g])) + _norm_logpdf(np.array([z_peak]), float(m1_g[g]), float(sd1_g[g]))[0]
+            ln_g = math.log(float(1.0 - p_arr[g])) + _norm_logpdf(np.array([z_peak]), float(m0_g[g]), float(sd0_g[g]))[0]
+            q_at_peak = float(special.expit(lp_g - ln_g))
+            oracle_z_acc += float(w[g]) * q_at_peak
+
+    return {
+        "z_grid": grid,
+        "q_pool_z": q_pool_z,
+        "pi_0_unsolvable": pi_0,
+        "pi_1_trivial": pi_1,
+        "p_bar": p_bar,
+        "var_z_pos": var_z_pos,
+        "var_z_neg": var_z_neg,
+        "kappa_z": kappa_z,
+        "z_peak": z_peak,
+        "q_z_peak": q_z_peak,
+        "z_tail_value": float(q_pool_z[-1]),
+        "z_tail_posterior_limit": z_tail_limit,
+        "tail_turn_down": tail_turn_down,
+        "raw_bon_asymptotic_acc": raw_bon_asymptotic_acc,
+        "oracle_z_cal_asymptotic_acc": float(oracle_z_acc),
+        "z_induces_collapse": bool(tail_turn_down and oracle_z_acc < raw_bon_asymptotic_acc - 1e-3),
+    }
+
+
+def simulate_zscore_induced_collapse(
+    prompt_weights: ArrayLike,
+    prompt_p: ArrayLike,
+    n_values: Sequence[int] | np.ndarray,
+    mu1_base: float = 1.5,
+    sigma1_base: float = 1.0,
+    mu0_base: float = 0.0,
+    sigma0_base: float = 1.0,
+    m_cal_prompts: int = 1_500,
+    n_cal_per_prompt: int = 32,
+    n_eval_prompts: int = 1_500,
+    n_bins: int = 20,
+    delta: float = 0.05,
+    seed: int = 42,
+) -> dict[str, np.ndarray]:
+    """仿真支持边界原子 p_g in {0, 1} 的题内 Z-Score 诱导坍塌（定理 7C 端到端验证）。"""
+    w = np.asarray(prompt_weights, dtype=np.float64).ravel()
+    p_arr = np.asarray(prompt_p, dtype=np.float64).ravel()
+    if w.size == 0 or p_arr.shape != w.shape or np.any(w <= 0.0):
+        raise ValueError("prompt_weights 与 prompt_p 无效")
+    w = w / float(np.sum(w))
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    if n_arr.ndim != 1 or n_arr.size == 0 or np.any(n_arr < 1):
+        raise ValueError("n_values 必须为非空正整数序列")
+
+    rng = np.random.default_rng(seed)
+
+    def _draw(nprom: int, ncand: int) -> tuple[np.ndarray, np.ndarray]:
+        st = rng.choice(w.size, size=nprom, p=w)
+        pp = p_arr[st][:, None]
+        lbl = rng.random((nprom, ncand)) < pp
+        sc = np.where(
+            lbl,
+            float(mu1_base) + float(sigma1_base) * rng.normal(size=(nprom, ncand)),
+            float(mu0_base) + float(sigma0_base) * rng.normal(size=(nprom, ncand)),
+        )
+        return sc, lbl
+
+    cal_s, cal_y = _draw(int(m_cal_prompts), int(n_cal_per_prompt))
+    cal_z = _within_prompt_zscore(cal_s)
+    cal_pooled = EmpiricalScoreCalibrator(
+        n_bins=int(n_bins), method="quantile_lcb", lcb_delta=float(delta), lcb_type="kl"
+    ).fit(cal_s.ravel(), cal_y.ravel())
+    cal_within = EmpiricalScoreCalibrator(
+        n_bins=int(n_bins), method="quantile_lcb", lcb_delta=float(delta), lcb_type="kl"
+    ).fit(cal_z.ravel(), cal_y.ravel())
+
+    eval_s, eval_y = _draw(int(n_eval_prompts), int(np.max(n_arr)))
+    rows = np.arange(int(n_eval_prompts))
+
+    def _pick(mat: np.ndarray, lbl: np.ndarray) -> float:
+        mx = np.max(mat, axis=1, keepdims=True)
+        mask = np.abs(mat - mx) <= 1e-13
+        noise = np.where(mask, rng.random(mat.shape), -1.0)
+        return float(np.mean(lbl[rows, np.argmax(noise, axis=1)]))
+
+    acc_raw, acc_pooled, acc_within = [], [], []
+    for nv in n_arr:
+        n_i = int(nv)
+        sub_s = eval_s[:, :n_i]
+        sub_y = eval_y[:, :n_i]
+        acc_raw.append(_pick(sub_s, sub_y))
+        acc_pooled.append(_pick(np.asarray(cal_pooled.predict_proba(sub_s), dtype=np.float64), sub_y))
+        if n_i == 1:
+            acc_within.append(float(np.mean(sub_y[:, 0])))
+        else:
+            z_sub = _within_prompt_zscore(sub_s)
+            acc_within.append(_pick(np.asarray(cal_within.predict_proba(z_sub), dtype=np.float64), sub_y))
+
+    return {
+        "n_values": n_arr,
+        "standard_bon_mc": np.asarray(acc_raw, dtype=np.float64),
+        "pooled_kl_lcb_mc": np.asarray(acc_pooled, dtype=np.float64),
+        "within_prompt_z_kl_lcb_mc": np.asarray(acc_within, dtype=np.float64),
+    }
+
+
 __all__ = [
     "PromptHeterogeneitySpec",
     "diagnose_simpson_confounding",
     "diagnose_within_prompt_residual",
+    "diagnose_zscore_induced_collapse",
     "evaluate_pooled_vs_within_prompt_calibration",
+    "simulate_zscore_induced_collapse",
 ]

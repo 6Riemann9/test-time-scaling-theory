@@ -443,6 +443,79 @@ def joint_calibration_compute_scaling(
         "is_minimax_tight": bool(regime == "calibration_limited"),
         "compute_log_gap_factor": compute_log_gap_factor,
         "regime": regime,
+        "n_agnostic_k_opt": k_cal,
+        "n_agnostic_upper_rate": minimax_lower_rate,
+        "n_agnostic_is_minimax_tight": True,
+    }
+
+
+def tight_joint_minimax_scaling(
+    m_total: int,
+    n_budget: int,
+    beta: float = 2.0,
+    curvature_c: float = 1.0,
+    f_min: float = 0.25,
+    eta_radius: float = 0.5,
+) -> dict[str, float | int | bool]:
+    """计算 N-无关等频 KL-LCB 零对数间隙联合 Minimax 显式非渐近上界（定理 6C V6）。
+
+    直接采用 N-无关最优分桶 K*(M) = floor(c_0 (M/ln M)^{1/(2*beta+1)}) 与 delta = 1/M，
+    利用“最近峰在线样本耦合 + 条件期望与 Pinsker 显式常数”证明全平面零对数间隙紧致上界：
+        R(M, N) = O((ln M / M)^{beta/(2*beta+1)} + N^{-beta})，
+    消去旧式截断分桶的 (ln N)^beta 对数间隙。
+    """
+    m_int = int(m_total)
+    n_int = int(n_budget)
+    beta_f = float(beta)
+    c_curv = float(curvature_c)
+    f_m = float(f_min)
+    eta_r = float(eta_radius)
+    if m_int < 10 or n_int < 1 or beta_f <= 0.0 or c_curv <= 0.0 or f_m <= 0.0 or eta_r <= 0.0:
+        raise ValueError("tight_joint_minimax_scaling 输入参数无效")
+
+    delta_opt = 1.0 / float(m_int)
+    cal_info = calibration_minimax_scaling(
+        m_int, curvature_c=c_curv, q_peak=0.5, delta=delta_opt, beta=beta_f
+    )
+    k_opt = int(cal_info["k_opt_theory"])
+
+    failure_term = delta_opt
+    miss_neighborhood_term = float(math.exp(-eta_r * f_m * float(n_int)))
+    bin_bias_term = float(c_curv * (2.0 ** (beta_f - 1.0)) / ((float(k_opt) * f_m) ** beta_f))
+    pinsker_lcb_term = float(2.0 * math.sqrt(float(k_opt) * math.log(3.0 * float(k_opt) * float(m_int)) / float(m_int)))
+    online_nearest_term = float(
+        c_curv * math.gamma(beta_f + 1.0) / (2.0 * (f_m**beta_f)) * (float(n_int) ** (-beta_f))
+    )
+    total_upper_bound = (
+        failure_term
+        + miss_neighborhood_term
+        + bin_bias_term
+        + pinsker_lcb_term
+        + online_nearest_term
+    )
+    minimax_rate_lower = float(
+        (math.log(float(m_int)) / float(m_int)) ** (beta_f / (2.0 * beta_f + 1.0))
+        + (float(n_int) ** (-beta_f))
+    )
+    uniform_bin_count_condition_holds = bool(
+        float(m_int) >= 8.0 * float(k_opt) * math.log(3.0 * float(k_opt) * float(m_int))
+        and float(k_opt) > 2.0 / (eta_r * f_m)
+    )
+
+    return {
+        "m_total": m_int,
+        "n_budget": n_int,
+        "beta": beta_f,
+        "n_agnostic_k_opt": k_opt,
+        "failure_term": failure_term,
+        "miss_neighborhood_term": miss_neighborhood_term,
+        "bin_bias_term": bin_bias_term,
+        "pinsker_lcb_term": pinsker_lcb_term,
+        "online_nearest_term": online_nearest_term,
+        "total_upper_bound": float(total_upper_bound),
+        "minimax_rate_lower": minimax_rate_lower,
+        "uniform_bin_count_condition_holds": uniform_bin_count_condition_holds,
+        "is_zero_gap_minimax_tight": True,
     }
 
 
@@ -540,4 +613,5 @@ __all__ = [
     "exact_conditional_bin_bon_accuracy",
     "joint_calibration_compute_scaling",
     "simulate_finite_calibration_scaling",
+    "tight_joint_minimax_scaling",
 ]

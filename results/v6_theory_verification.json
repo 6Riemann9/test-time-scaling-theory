@@ -1,0 +1,365 @@
+{
+  "thm5a3": {
+    "pareto_interior": {
+      "kappa_fisher": 1.5065501110392518,
+      "kappa_safe": 0.9999999999992073,
+      "kappa_geneig": 0.6708203932499368,
+      "snr2_fisher": 0.948379310344827,
+      "snr2_safe": 0.630093745406894,
+      "tau_star": 0.28425259832736033,
+      "snr2_deriv_nonpositive": 1,
+      "ratio_deriv_nonpositive": 1,
+      "n_values": [
+        2,
+        8,
+        64,
+        512,
+        4096
+      ],
+      "fisher_mc_acc": [
+        0.374575,
+        0.56675,
+        0.582625,
+        0.4601,
+        0.28995
+      ],
+      "safe_fisher_mc_acc": [
+        0.3545,
+        0.586275,
+        0.8131,
+        0.916875,
+        0.957925
+      ],
+      "geneig_mc_acc": [
+        0.27865,
+        0.433475,
+        0.771025,
+        0.965,
+        0.99665
+      ]
+    },
+    "degenerate_orthogonal_boundary": {
+      "regime": "degenerate_orthogonal_boundary",
+      "tau_star": 0.5000000000000001,
+      "kappa_safe": 1.0,
+      "snr2_safe": 0.22236842105263166
+    },
+    "qda_ceiling_monotonicity": {
+      "K=1": {
+        "num_verifiers": 1,
+        "bayes_ceiling_q": 0.3956842086873269,
+        "ell_peak_qda": 0.6751318343739408,
+        "asymptotic_coef_a_k": 0.7458430932049918,
+        "curse_rate_exponent": 2.0
+      },
+      "K=2": {
+        "num_verifiers": 2,
+        "bayes_ceiling_q": 0.5316205886213564,
+        "ell_peak_qda": 1.2252636687478815,
+        "asymptotic_coef_a_k": 0.387400029051004,
+        "curse_rate_exponent": 1.0
+      },
+      "K=3": {
+        "num_verifiers": 3,
+        "bayes_ceiling_q": 0.6538300984299725,
+        "ell_peak_qda": 1.7345301185064375,
+        "asymptotic_coef_a_k": 0.32825216202368085,
+        "curse_rate_exponent": 0.6666666666666666
+      }
+    },
+    "qda_curse_rate_verification": {
+      "K=1": {
+        "eval_mode": "exact_numerical_integral",
+        "bayes_ceiling_q": 0.3988313174457936,
+        "c_k": 1.2355328153065186,
+        "asymptotic_coef_a_k": 1.31015122264185,
+        "curse_rate_exponent": 2.0,
+        "n_values": [
+          16,
+          64,
+          256,
+          1024
+        ],
+        "observed_accuracy": [
+          0.3944582319430107,
+          0.39852534257375977,
+          0.3988115434121691,
+          0.3988300682645087
+        ],
+        "observed_regret": [
+          0.00437308550278287,
+          0.0003059748720338207,
+          1.9774033624464504e-05,
+          1.2491812849124706e-06
+        ],
+        "theory_regret": [
+          0.005117778213444726,
+          0.0003198611383402954,
+          1.9991321146268462e-05,
+          1.2494575716417789e-06
+        ],
+        "regret_ratio_obs_over_theory": [
+          0.854489061541295,
+          0.9565865788556617,
+          0.9891309073465354,
+          0.9997788746608296
+        ]
+      },
+      "K=2": {
+        "eval_mode": "monte_carlo_60k",
+        "bayes_ceiling_q": 0.62441459942918,
+        "c_k": 1.5847374021742293,
+        "asymptotic_coef_a_k": 0.6310193718076063,
+        "curse_rate_exponent": 1.0,
+        "n_values": [
+          32,
+          64,
+          128
+        ],
+        "observed_accuracy": [
+          0.6014333333333334,
+          0.61445,
+          0.6197166666666667
+        ],
+        "observed_regret": [
+          0.02298126609584661,
+          0.009964599429179932,
+          0.0046979327625132905
+        ],
+        "theory_regret": [
+          0.019719355368987695,
+          0.009859677684493848,
+          0.004929838842246924
+        ],
+        "regret_ratio_obs_over_theory": [
+          1.1654167018050126,
+          1.0106414984387464,
+          0.9529586894917775
+        ]
+      }
+    }
+  },
+  "thm6c_zero_gap": {
+    "explicit_bounds": [
+      {
+        "m_total": 1000,
+        "n_budget": 4,
+        "beta": 2.0,
+        "n_agnostic_k_opt": 4,
+        "failure_term": 0.001,
+        "miss_neighborhood_term": 0.22313016014842982,
+        "bin_bias_term": 0.2,
+        "pinsker_lcb_term": 0.38766298618816086,
+        "online_nearest_term": 0.1,
+        "total_upper_bound": 0.9117931463365907,
+        "minimax_rate_lower": 0.1991893811772226,
+        "uniform_bin_count_condition_holds": 0,
+        "is_zero_gap_minimax_tight": 1
+      },
+      {
+        "m_total": 10000,
+        "n_budget": 8,
+        "beta": 2.0,
+        "n_agnostic_k_opt": 6,
+        "failure_term": 0.0001,
+        "miss_neighborhood_term": 0.049787068367863944,
+        "bin_bias_term": 0.08888888888888889,
+        "pinsker_lcb_term": 0.17041628182686544,
+        "online_nearest_term": 0.025,
+        "total_upper_bound": 0.3341922390836183,
+        "minimax_rate_lower": 0.07667845871368743,
+        "uniform_bin_count_condition_holds": 1,
+        "is_zero_gap_minimax_tight": 1
+      },
+      {
+        "m_total": 100000,
+        "n_budget": 8,
+        "beta": 2.0,
+        "n_agnostic_k_opt": 9,
+        "failure_term": 1e-05,
+        "miss_neighborhood_term": 0.049787068367863944,
+        "bin_bias_term": 0.03950617283950617,
+        "pinsker_lcb_term": 0.07301475494138729,
+        "online_nearest_term": 0.025,
+        "total_upper_bound": 0.1873179961487574,
+        "minimax_rate_lower": 0.04220006143718862,
+        "uniform_bin_count_condition_holds": 1,
+        "is_zero_gap_minimax_tight": 1
+      },
+      {
+        "m_total": 100000,
+        "n_budget": 512,
+        "beta": 2.0,
+        "n_agnostic_k_opt": 9,
+        "failure_term": 1e-05,
+        "miss_neighborhood_term": 4.125337404615185e-84,
+        "bin_bias_term": 0.03950617283950617,
+        "pinsker_lcb_term": 0.07301475494138729,
+        "online_nearest_term": 6.103515625e-06,
+        "total_upper_bound": 0.11253703129651846,
+        "minimax_rate_lower": 0.026578876134454248,
+        "uniform_bin_count_condition_holds": 1,
+        "is_zero_gap_minimax_tight": 1
+      }
+    ],
+    "simulation_m50k_small_n": {
+      "n_values": [
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "k_n_agnostic": 8,
+      "k_truncated_baseline": 2,
+      "n_agnostic_kl_lcb_acc": [
+        0.3694711208963486,
+        0.41301529876336096,
+        0.42985993218881646,
+        0.43169443038147876,
+        0.43171270557018926
+      ],
+      "truncated_kl_lcb_acc": [
+        0.3474063428960768,
+        0.37675791452976837,
+        0.38326769885717327,
+        0.38350295410730856,
+        0.3835032413182589
+      ]
+    }
+  },
+  "thm7c_zscore_collapse": {
+    "analytic_no_trivial_pi1_zero": {
+      "pi_0_unsolvable": 0.55,
+      "pi_1_trivial": 0.0,
+      "var_z_pos": 0.7352941176470592,
+      "var_z_neg": 0.9776886821325828,
+      "kappa_z": 1.1531073704127954,
+      "z_peak": 2.1000000000000005,
+      "q_z_peak": 0.42920650980742675,
+      "z_tail_value": 0.00010076210179939579,
+      "z_tail_posterior_limit": 0.0,
+      "raw_bon_asymptotic_acc": 0.44999999999999996,
+      "oracle_z_cal_asymptotic_acc": 0.42737915524192677,
+      "z_induces_collapse": 1
+    },
+    "analytic_with_trivial_pi1_005": {
+      "pi_0_unsolvable": 0.15,
+      "pi_1_trivial": 0.05,
+      "kappa_z": 1.0855307920167847,
+      "z_tail_value": 0.2500000011128769,
+      "z_tail_posterior_limit": 0.25,
+      "z_induces_collapse": 1
+    },
+    "simulation": {
+      "n_values": [
+        1,
+        8,
+        32,
+        64,
+        128,
+        256
+      ],
+      "standard_bon_mc": [
+        0.2225,
+        0.3875,
+        0.425,
+        0.4315,
+        0.432,
+        0.439
+      ],
+      "pooled_kl_lcb_mc": [
+        0.2225,
+        0.3875,
+        0.4235,
+        0.4275,
+        0.427,
+        0.4375
+      ],
+      "within_prompt_z_kl_lcb_mc": [
+        0.2225,
+        0.387,
+        0.415,
+        0.419,
+        0.4075,
+        0.4025
+      ]
+    }
+  },
+  "real_data": {
+    "rb2_hetero6_n4_5fold": {
+      "n_problems": 1723,
+      "mean_tau_star": 0.5635731700831266,
+      "accuracies": {
+        "Best1(Skywork)": 0.8955310504933256,
+        "Fisher(tau=-1)": 0.8827626233313988,
+        "Safe-Fisher(kappa<=1)": 0.816598955310505,
+        "QDA": 0.8792803250145096,
+        "GenEig": 0.3929193267556587
+      }
+    },
+    "acemath_rm_b_zscore_tail": {
+      "n_problems": 8987,
+      "frac_p0": 0.14220540781128296,
+      "var_z_pos": 0.663669409392519,
+      "var_z_neg": 1.0618882417818774,
+      "kappa_z": 1.2649213005395807,
+      "quantile_profile": [
+        {
+          "z_range": [
+            -6.185309518208796,
+            -0.24993543060417892
+          ],
+          "q_z": 0.3068627834500385,
+          "frac_p0": 0.14073726349280863,
+          "mean_p": 0.4948293594909309
+        },
+        {
+          "z_range": [
+            -0.24993543060417892,
+            0.8998795458109569
+          ],
+          "q_z": 0.6250483554790561,
+          "frac_p0": 0.14740488640265662,
+          "mean_p": 0.5343660080541756
+        },
+        {
+          "z_range": [
+            0.8998795458109569,
+            1.1657036982048359
+          ],
+          "q_z": 0.7279018012379164,
+          "frac_p0": 0.12593017595103972,
+          "mean_p": 0.5597586432470965
+        },
+        {
+          "z_range": [
+            1.1657036982048359,
+            1.3976829729741227
+          ],
+          "q_z": 0.7188358426927223,
+          "frac_p0": 0.12521297680726035,
+          "mean_p": 0.5051712072742446
+        },
+        {
+          "z_range": [
+            1.3976829729741227,
+            1.915241435803308
+          ],
+          "q_z": 0.6439779197635502,
+          "frac_p0": 0.14682487938453515,
+          "mean_p": 0.40885926022514885
+        },
+        {
+          "z_range": [
+            1.915241435803308,
+            5.820766571187038
+          ],
+          "q_z": 0.46383866481223923,
+          "frac_p0": 0.2221835883171071,
+          "mean_p": 0.26272383518776077
+        }
+      ]
+    }
+  }
+}
