@@ -1,5 +1,9 @@
 # 测试时计算缩放的联合校准—算力极限：Minimax 理论与裁判选择 (`tts-theory`)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24563479.svg)](https://doi.org/10.5281/zenodo.24563479)
+[![ORCID](https://img.shields.io/badge/ORCID-0009--0007--5524--7050-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0007-5524-7050)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 面向大语言模型（LLM）推理阶段的**测试时计算缩放（Test-Time Scaling, TTS；*Joint Calibration–Compute Limits of Test-Time Scaling: Minimax Theory and Verifier Selection*）**概率论证明与数值实证库，聚焦有限校准集与在线算力的联合 Minimax 极限、跨题异质性下的在线样本标准化边界与风险控制裁判选择，以及异构多裁判融合相变。
 
 > **架构概览（v1.0.0 顶会投稿优化版：NeurIPS 格式、全矢量图表与全量文献核验）**：
@@ -143,3 +147,21 @@ python scripts/audit_paper_artifacts.py
 
 #### (4) Stage 2 实证：真实跨域辛普森悖论逆转与三分支门控边界
 ![Stage 2 Real Simpson and Cross-Domain Heterogeneity](results/figures/stage2_real_simpson_and_cross_domain.png)
+
+---
+
+## 5. 引用方式（Citation）
+
+如果您在研究或工程中使用本项目的理论推导、实验脚本或开源工具，欢迎通过以下 BibTeX（亦见仓库根目录 [CITATION.cff](CITATION.cff)）引用本工作：
+
+```bibtex
+@misc{zhang2026tts,
+  author       = {Zhang, Xinkang},
+  title        = {Joint Calibration--Compute Limits of Test-Time Scaling: Minimax Theory, Prompt Heterogeneity, and Risk-Controlled Verifier Selection},
+  year         = {2026},
+  version      = {v1.0.0},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.24563479},
+  url          = {https://doi.org/10.5281/zenodo.24563479}
+}
+```

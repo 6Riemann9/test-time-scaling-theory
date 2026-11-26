@@ -3,6 +3,7 @@ message: "If you use this software or cite the accompanying theory, please cite 
 type: software
 title: "Joint Calibration-Compute Limits of Test-Time Scaling: Minimax Theory, Prompt Heterogeneity, and Risk-Controlled Verifier Selection"
 version: "1.0.0"
+doi: "10.5281/zenodo.24563479"
 date-released: "2026-11-26"
 license: MIT
 repository-code: "https://github.com/6Riemann9/test-time-scaling-theory"
@@ -36,4 +37,5 @@ preferred-citation:
       email: "3203235490@qq.com"
       orcid: "https://orcid.org/0009-0007-5524-7050"
   year: 2026
+  doi: "10.5281/zenodo.24563479"
   url: "https://github.com/6Riemann9/test-time-scaling-theory"
