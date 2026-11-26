@@ -272,7 +272,7 @@ def diagnose_simpson_confounding(
         work_mask = np.ones_like(grid, dtype=bool)
     min_deriv_work = float(np.min(analytic_total[work_mask]))
     pooled_appears_monotone = bool(min_deriv_work > 0.0)
-    # 存在题内期望导数为负却被跨题正协方差彻底掩盖为正的点
+    # 存在题内期望导数为负却被跨题正协方差掩盖为正的点
     masked_points = int(np.count_nonzero((within_term < -1e-6) & (analytic_total > 1e-6) & work_mask))
 
     return {
@@ -692,21 +692,30 @@ def verify_sample_zscore_extremal_convergence(
     sigma1_base: float = 1.0,
     mu0_base: float = 0.0,
     sigma0_base: float = 1.0,
+    prompt_shift: ArrayLike | None = None,
+    prompt_scale: ArrayLike | None = None,
     n_eval_prompts: int = 3_000,
     seed: int = 42,
 ) -> dict:
-    """定量验证在线样本题内标准化 Z_{i,N} 对总体 Z_i^*(X) 的一致极值收敛与渐近上限损失（定理 7C(4)）。
+    """定量验证在线样本题内标准化 Z_{i,N} 对总体 Z_i^*(X) 的一致极值收敛与仿射不变上限损失（定理 7C(4)）。
 
-    对任意预算 N >= 2：
+    对任意题间仿射变换 S_i = b(X) + a(X) * S_tilde_i（a(X) > 0）与预算 N >= 2：
     1. 验证极值偏差上确界 Delta_N(X) := max_{1<=i<=N} |Z_{i,N} - Z_i^*(X)| 满足 O_p(sqrt((ln N) / N))；
-    2. 精确评估真实池化后验函数 q_{pool, Z^*}(.) 分别作用于总体 Z_i^*(X) 与在线样本 Z_{i,N} 时
-       的选择准确率，验证 lim_{N->inf} P_{Sample-Z-Cal}^{oracle}(N) 收敛至理论渐近上限 (< 1 - pi_0)。
+    2. 核验精确仿射坐标恒等式：
+       q_X(S_i) = q_X(b(X) + a(X) * [mu_tilde(X) + sigma_tilde(X) * Z_i^*(X)]) == q_tilde_X(mu_tilde(X) + sigma_tilde(X) * Z_i^*(X))，
+       消除漏写 (b(X), a(X)) 导致的大偏移不一致；
+    3. 验证在线样本 Z_{i,N} Oracle 选择准确率 lim_{N->inf} P_{Sample-Z-Cal}^{oracle}(N) 对任意 (b(X), a(X))
+       严格不变且收敛至理论渐近上限 (< 1 - pi_0)。
     """
     w = np.asarray(prompt_weights, dtype=np.float64).ravel()
     p_arr = np.asarray(prompt_p, dtype=np.float64).ravel()
     if w.size == 0 or p_arr.shape != w.shape or np.any(w <= 0.0):
         raise ValueError("prompt_weights 与 prompt_p 必须为非空等长正权数组")
     w = w / float(np.sum(w))
+    b_arr = np.zeros_like(w) if prompt_shift is None else np.asarray(prompt_shift, dtype=np.float64).ravel()
+    a_arr = np.ones_like(w) if prompt_scale is None else np.asarray(prompt_scale, dtype=np.float64).ravel()
+    if b_arr.shape != w.shape or a_arr.shape != w.shape or np.any(a_arr <= 0.0):
+        raise ValueError("prompt_shift 与 prompt_scale 必须与 prompt_weights 等长且 prompt_scale > 0")
     n_arr = np.asarray(list(n_values), dtype=np.int64)
     if n_arr.ndim != 1 or n_arr.size == 0 or np.any(n_arr < 2):
         raise ValueError("n_values 必须为 >= 2 的整数序列")
@@ -750,32 +759,48 @@ def verify_sample_zscore_extremal_convergence(
     n_max = int(np.max(n_arr))
     strata = rng.choice(w.size, size=int(n_eval_prompts), p=w)
     pp = p_arr[strata][:, None]
+    b_row = b_arr[strata][:, None]
+    a_row = a_arr[strata][:, None]
     labels = rng.random((int(n_eval_prompts), n_max)) < pp
-    scores = np.where(
+    tilde_scores = np.where(
         labels,
         float(mu1_base) + s1 * rng.normal(size=(int(n_eval_prompts), n_max)),
         float(mu0_base) + s0 * rng.normal(size=(int(n_eval_prompts), n_max)),
     )
+    # 原始观测打分 S_i = b(X) + a(X) * tilde_S_i
+    raw_scores = b_row + a_row * tilde_scores
     mu_row = mu_tilde[strata][:, None]
     sd_row = std_tilde[strata][:, None]
-    z_pop_full = (scores - mu_row) / sd_row
+    z_pop_full = (tilde_scores - mu_row) / sd_row
 
-    # 条件于 (X, S_{1:N}) 的精确后验正确率 q_X(S_i)，消除二元标签采样噪声
-    q_true_full = np.zeros_like(scores, dtype=np.float64)
+    # 同时由原始打分坐标 q_X(b(X) + a(X)*[mu_tilde + sigma_tilde*Z*]) 与基底坐标 q_tilde_X 计算条件后验并核对一致
+    q_true_raw_coord = np.zeros_like(raw_scores, dtype=np.float64)
+    q_true_base_coord = np.zeros_like(raw_scores, dtype=np.float64)
     for g in range(w.size):
         mask_g = strata == g
         if not np.any(mask_g):
             continue
         pg = float(p_arr[g])
         if pg <= 0.0:
-            q_true_full[mask_g] = 0.0
+            q_true_raw_coord[mask_g] = 0.0
+            q_true_base_coord[mask_g] = 0.0
         elif pg >= 1.0:
-            q_true_full[mask_g] = 1.0
+            q_true_raw_coord[mask_g] = 1.0
+            q_true_base_coord[mask_g] = 1.0
         else:
-            sg = scores[mask_g]
-            lp = math.log(pg) + _norm_logpdf(sg, float(mu1_base), s1)
-            ln = math.log1p(-pg) + _norm_logpdf(sg, float(mu0_base), s0)
-            q_true_full[mask_g] = special.expit(lp - ln)
+            bg = float(b_arr[g])
+            ag = float(a_arr[g])
+            s_raw_g = bg + ag * (float(mu_tilde[g]) + float(std_tilde[g]) * z_pop_full[mask_g])
+            lp_r = math.log(pg) + _norm_logpdf(s_raw_g, bg + ag * float(mu1_base), ag * s1)
+            ln_r = math.log1p(-pg) + _norm_logpdf(s_raw_g, bg + ag * float(mu0_base), ag * s0)
+            q_true_raw_coord[mask_g] = special.expit(lp_r - ln_r)
+
+            s_base_g = float(mu_tilde[g]) + float(std_tilde[g]) * z_pop_full[mask_g]
+            lp_b = math.log(pg) + _norm_logpdf(s_base_g, float(mu1_base), s1)
+            ln_b = math.log1p(-pg) + _norm_logpdf(s_base_g, float(mu0_base), s0)
+            q_true_base_coord[mask_g] = special.expit(lp_b - ln_b)
+
+    max_affine_discrepancy = float(np.max(np.abs(q_true_raw_coord - q_true_base_coord)))
 
     rows = np.arange(int(n_eval_prompts))
     mean_sup_err = np.zeros(n_arr.size, dtype=np.float64)
@@ -786,10 +811,11 @@ def verify_sample_zscore_extremal_convergence(
 
     for j, nv in enumerate(n_arr):
         n_i = int(nv)
-        s_sub = scores[:, :n_i]
+        s_sub = raw_scores[:, :n_i]
         z_pop = z_pop_full[:, :n_i]
+        # 在线样本标准化直接作用于含偏移/缩放的原始打分 S_i
         z_smp = _within_prompt_zscore(s_sub)
-        q_sub = q_true_full[:, :n_i]
+        q_sub = q_true_raw_coord[:, :n_i]
 
         sup_vec = np.max(np.abs(z_smp - z_pop), axis=1)
         mean_sup_err[j] = float(np.mean(sup_vec))
@@ -809,6 +835,7 @@ def verify_sample_zscore_extremal_convergence(
         "raw_bon_acc": raw_bon_acc,
         "population_z_oracle_acc": pop_z_oracle_acc,
         "sample_z_oracle_acc": sample_z_oracle_acc,
+        "max_affine_posterior_discrepancy": max_affine_discrepancy,
         "theoretical_raw_ceiling": float(diag["raw_bon_asymptotic_acc"]),
         "theoretical_z_oracle_ceiling": float(diag["oracle_z_cal_asymptotic_acc"]),
         "theoretical_ceiling_loss": float(diag["asymptotic_ceiling_loss"]),

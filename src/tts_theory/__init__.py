@@ -63,6 +63,7 @@ from tts_theory.real_eval import (
     evaluate_heterogeneous_multi_rm_on_real_pools,
     evaluate_joint_m_n_calibration_on_real_pools,
     evaluate_real_prompt_heterogeneity,
+    evaluate_single_split_prompt_heterogeneity,
     exact_pool_bon_accuracy,
     extract_boxed_answer,
     fit_and_predict_sota_calibrator,
@@ -176,6 +177,7 @@ __all__ = [
     "evaluate_heterogeneous_multi_rm_on_real_pools",
     "evaluate_joint_m_n_calibration_on_real_pools",
     "evaluate_real_prompt_heterogeneity",
+    "evaluate_single_split_prompt_heterogeneity",
 ]
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"

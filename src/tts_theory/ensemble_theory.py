@@ -79,7 +79,7 @@ def _min_gaussian_component_log_stats(
         z*(w) = max(0, K*sqrt(rho)/(1 + (K-1)*rho) * w)
         tau_z = sqrt((1 - rho)/(1 + (K-1)*rho))
         z = z* + tau_z * sqrt(2) * u
-    彻底消除极右尾（w >> 1）下的积分节点漏采与下溢问题。
+    有效避免极右尾（w >> 1）下的积分节点漏采与下溢问题。
 
     Returns:
         (log_sf, log_cdf, log_pdf) 三个与 x 同形状的 float64 数组。
@@ -432,7 +432,7 @@ def ensemble_phase_reversal_criterion(spec: MultiVerifierGaussianSpec) -> dict:
         kappa <= kappa_critical(K) = sqrt((1 + (K-1)*rho1) / (1 + (K-1)*rho0))
     其中 kappa = sigma0 / sigma1。当 rho0 < rho1 / kappa^2 且 kappa > 1 时，
     存在有限临界裁判数 K_c = ceil(1 + (kappa^2 - 1) / (rho1 - kappa^2 * rho0))
-    使融合器跨越相界逆转为永不坍塌。
+    使融合器跨越相界逆转为渐近一致无坍塌。
     """
     k = int(spec.num_verifiers)
     kappa_single = spec.kappa_single
@@ -582,8 +582,8 @@ class HeterogeneousVulnerabilitySpec:
     - 正类（Y=1）：全部 K 个裁判 S^{(k)} = mu1 + sigma1 * T1 + eta * eps_k（T1 ~ t_{alpha1}）；
     - 错类（Y=0）：前 (K - n_vulnerable) 个健康裁判仅受高斯轻尾打分 N(mu0, sigma0^2)，
       后 n_vulnerable 个脆弱裁判以概率 1 遭受重尾错分 S^{(k)} = mu0 + sigma_vuln * T_0（T_0 ~ t_{alpha0}）。
-    只要存在至少 1 个健康裁判（n_vulnerable < K），Min-Ensemble 即可完全屏蔽污染裁判而永不坍塌，
-    而 Mean-Ensemble 会被哪怕 1 个重尾污染裁判彻底拖垮。
+    只要存在至少 1 个健康裁判（n_vulnerable < K），Min-Ensemble 即可屏蔽污染裁判而保持渐近一致，
+    而 Mean-Ensemble 会被单个重尾污染裁判拖入坍塌。
     """
 
     p: float = 0.25

@@ -493,7 +493,7 @@ class _CalibratedBaseSelector(BaseSelector):
 class CalibratedWeightedBoN(_CalibratedBaseSelector):
     """校准后验加权 Best-of-N。
 
-    - 无离散答案时：选择校准后验最高者 argmax_i q(S_i)（即 Calibrated-BoN，彻底消除右尾坍塌）；
+    - 无离散答案时：选择校准后验最高者 argmax_i q(S_i)（即 Calibrated-BoN，消除右尾坍塌）；
     - 有离散答案时：按有界校准后验权重 w(S_i) = min(w_max, q / (1 - q + eta))
       聚合各个候选答案总得分，选总分最高答案。
     """

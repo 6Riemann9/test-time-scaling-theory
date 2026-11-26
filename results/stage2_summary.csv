@@ -184,7 +184,7 @@ S3_3Domain_Het,heterogeneity,Pooled-KL-LCB,2,0.483417,0.008879,masked=0
 S3_3Domain_Het,heterogeneity,Pooled-KL-LCB,128,0.486758,0.00884,masked=0
 S3_3Domain_Het,heterogeneity,Within-Prompt-Z-KL-LCB,2,0.48935,0.00892,masked=0
 S3_3Domain_Het,heterogeneity,Within-Prompt-Z-KL-LCB,128,0.498177,0.008821,masked=0
-S3_3Domain_Het,heterogeneity,Hybrid-Adaptive-KL-LCB,2,0.489403,0.008921,masked=0
+S3_3Domain_Het,heterogeneity,Hybrid-Adaptive-KL-LCB,2,0.489332,0.008922,masked=0
 S3_3Domain_Het,heterogeneity,Hybrid-Adaptive-KL-LCB,128,0.508292,0.009126,masked=0
 S4_AceMath_SOTA_M400,sota_calibrator,standard_bon,64,0.699822,0.0,"m_cal=400,k=20"
 S4_AceMath_SOTA_M400,sota_calibrator,platt_scaling,64,0.699822,0.0,"m_cal=400,k=20"
@@ -200,5 +200,5 @@ S4_AceMath7_Het_RMB,heterogeneity,Pooled-KL-LCB,2,0.607331,0.003972,masked=0
 S4_AceMath7_Het_RMB,heterogeneity,Pooled-KL-LCB,64,0.69506,0.004704,masked=0
 S4_AceMath7_Het_RMB,heterogeneity,Within-Prompt-Z-KL-LCB,2,0.607767,0.003981,masked=0
 S4_AceMath7_Het_RMB,heterogeneity,Within-Prompt-Z-KL-LCB,64,0.67032,0.004646,masked=0
-S4_AceMath7_Het_RMB,heterogeneity,Hybrid-Adaptive-KL-LCB,2,0.60773,0.003981,masked=0
+S4_AceMath7_Het_RMB,heterogeneity,Hybrid-Adaptive-KL-LCB,2,0.607748,0.003981,masked=0
 S4_AceMath7_Het_RMB,heterogeneity,Hybrid-Adaptive-KL-LCB,64,0.694818,0.004753,masked=0

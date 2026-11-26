@@ -271,7 +271,7 @@ def exact_pool_bon_accuracy(
     （C_0 = 0, C_G = L），组内真实平均正确率为 q_bar_g。则不放回抽 N 个样本时，
     组 g 恰好成为最大组并被均匀随机选中的精确概率为：
         P(max_group = g) = (C(C_g, N) - C(C_{g-1}, N)) / C(L, N)
-    全程在对数域通过 gammaln 计算二项式系数，彻底避免大 L 组合数溢出。
+    全程在对数域通过 gammaln 计算二项式系数，严格避免大 L 组合数溢出。
     """
     s_arr = np.asarray(scores, dtype=np.float64).ravel()
     y_arr = np.asarray(is_correct, dtype=np.float64).ravel()
@@ -525,81 +525,142 @@ def evaluate_finite_calibration_on_real_pools(
     delta: float = 0.05,
     prior_strength: float = 2.0,
     seed: int = 42,
+    quantile_protocol: str = "semi_supervised",
 ) -> dict[str, Any]:
-    """在真实大模型候选池上评估有限校准集 M 对线上 BoN 的二次坍塌与 LCB 效应。"""
+    """在真实大模型候选池上评估有限校准集 M 对线上 BoN 的二次坍塌与 LCB 效应。
+
+    当 binning='quantile' 时，支持三种严格区分样本预算边界的分桶协议（对应命题 6.1）：
+    - 'semi_supervised'（默认）：使用全校准池无标签分数估计分位数边界（U 条无标签 + M 条有标签）；
+    - 'sample_split'（命题 6.1 严格总预算 M 算法）：每次仅抽取 M 条样本，前 M_1=floor(M/2) 条用顺序统计量
+      r_k = floor(k*(M_1+1)/K) 构造分位边界，后 M_2 = M - M_1 条独立估计桶内正例率（零池外无标签信息）；
+    - 'in_sample'：每次仅抽取 M 条样本，在同一批 M 条样本上同时估计分位数边界与桶内正例率。
+    """
     c_s = np.asarray(cal_scores, dtype=np.float64).ravel()
     c_y = np.asarray(cal_correct, dtype=np.int64).ravel()
     if c_s.size == 0 or c_s.shape != c_y.shape:
         raise ValueError("cal_scores 与 cal_correct 必须非空且长度一致")
     if binning not in ("uniform", "quantile"):
         raise ValueError("binning 必须为 'uniform' 或 'quantile'")
+    if quantile_protocol not in ("semi_supervised", "sample_split", "in_sample"):
+        raise ValueError("quantile_protocol 必须为 'semi_supervised', 'sample_split' 或 'in_sample'")
 
-    # 由真实校准集总分布确定统一固定参考桶边界，保证可复现与无测试泄露
-    if binning == "quantile":
-        edges = np.quantile(c_s, np.linspace(0.0, 1.0, int(n_bins) + 1))
-        edges = np.unique(edges)
-        inner_edges = edges[1:-1] if edges.size >= 3 else np.array([float(np.median(c_s))])
-    else:
-        lo_x, hi_x = np.quantile(c_s, [5e-4, 1.0 - 5e-4])
-        inner_edges = (
-            np.linspace(float(lo_x), float(hi_x), int(n_bins) - 1)
-            if int(n_bins) > 2
-            else np.array([0.5 * float(lo_x + hi_x)])
-        )
-    k_actual = int(inner_edges.size + 1)
-
-    # 预先把校准集和全部测试题按候选池长度分组并聚合到桶计数矩阵 (P_L, K)
-    cal_bin_idx = np.searchsorted(inner_edges, c_s, side="right")
-    buckets_by_len: dict[int, tuple[list[np.ndarray], list[np.ndarray]]] = {}
-    raw_curves = np.empty((len(test_pools), len(n_values)), dtype=np.float64)
+    n_tests = len(test_pools)
+    raw_curves = np.empty((n_tests, len(n_values)), dtype=np.float64)
+    pools_by_len: dict[int, tuple[list[np.ndarray], list[np.ndarray]]] = {}
     for idx_t, (ts, ty) in enumerate(test_pools):
         ts_arr = np.asarray(ts, dtype=np.float64).ravel()
         ty_arr = np.asarray(ty, dtype=np.int64).ravel()
         raw_curves[idx_t] = exact_pool_bon_accuracy(ts_arr, ty_arr, n_values)
-        b_idx = np.searchsorted(inner_edges, ts_arr, side="right")
-        c_row = np.bincount(b_idx, minlength=k_actual)
-        y_row = np.bincount(b_idx, weights=ty_arr, minlength=k_actual).astype(np.int64)
         l_len = int(ts_arr.size)
-        if l_len not in buckets_by_len:
-            buckets_by_len[l_len] = ([], [])
-        buckets_by_len[l_len][0].append(c_row)
-        buckets_by_len[l_len][1].append(y_row)
-
-    test_groups_by_len: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {
-        l_len: (
-            np.asarray(c_list, dtype=np.int64),
-            np.asarray(y_list, dtype=np.int64),
-            _build_hypergeom_table(l_len, n_values),
-        )
-        for l_len, (c_list, y_list) in buckets_by_len.items()
-    }
+        if l_len not in pools_by_len:
+            pools_by_len[l_len] = ([], [])
+        pools_by_len[l_len][0].append(ts_arr)
+        pools_by_len[l_len][1].append(ty_arr)
     standard_bon_curve = np.mean(raw_curves, axis=0)
 
     rng = np.random.default_rng(seed)
     replace_draw = int(m_cal) > c_s.size
-    prior_p = float(np.mean(c_y))
-    n_tests = len(test_pools)
-
     acc_runs = {m_name: np.zeros((n_repeats, len(n_values)), dtype=np.float64) for m_name in methods}
-    for r_idx in range(n_repeats):
-        pick = rng.choice(c_s.size, size=int(m_cal), replace=replace_draw)
-        b_pick = cal_bin_idx[pick]
-        y_pick = c_y[pick]
-        counts = np.bincount(b_pick, minlength=k_actual).astype(np.float64)
-        positives = np.bincount(b_pick, weights=y_pick, minlength=k_actual).astype(np.float64)
 
-        for m_name in methods:
-            est = compute_bin_calibrator_scores(
-                counts,
-                positives,
-                method=m_name,
-                prior_p=prior_p,
-                delta=delta,
-                prior_strength=prior_strength,
+    if binning == "uniform" or quantile_protocol == "semi_supervised":
+        if binning == "quantile":
+            edges = np.quantile(c_s, np.linspace(0.0, 1.0, int(n_bins) + 1))
+            edges = np.unique(edges)
+            inner_edges = edges[1:-1] if edges.size >= 3 else np.array([float(np.median(c_s))])
+        else:
+            lo_x, hi_x = np.quantile(c_s, [5e-4, 1.0 - 5e-4])
+            inner_edges = (
+                np.linspace(float(lo_x), float(hi_x), int(n_bins) - 1)
+                if int(n_bins) > 2
+                else np.array([0.5 * float(lo_x + hi_x)])
             )
-            acc_runs[m_name][r_idx] = _eval_mapped_pools_fast(
-                test_groups_by_len, est, n_values, n_tests
+        k_actual = int(inner_edges.size + 1)
+        cal_bin_idx = np.searchsorted(inner_edges, c_s, side="right")
+
+        test_groups_by_len: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        for l_len, (s_list, y_list) in pools_by_len.items():
+            s_mat = np.asarray(s_list, dtype=np.float64)
+            y_mat = np.asarray(y_list, dtype=np.int64)
+            p_l = s_mat.shape[0]
+            b_mat = np.searchsorted(inner_edges, s_mat, side="right")
+            flat_idx = (np.arange(p_l, dtype=np.int64)[:, None] * k_actual + b_mat).ravel()
+            c_mat = np.bincount(flat_idx, minlength=p_l * k_actual).reshape(p_l, k_actual)
+            pos_mat = np.bincount(
+                flat_idx, weights=y_mat.ravel().astype(np.float64), minlength=p_l * k_actual
+            ).astype(np.int64).reshape(p_l, k_actual)
+            test_groups_by_len[l_len] = (c_mat, pos_mat, _build_hypergeom_table(l_len, n_values))
+
+        prior_p = float(np.mean(c_y))
+        for r_idx in range(n_repeats):
+            pick = rng.choice(c_s.size, size=int(m_cal), replace=replace_draw)
+            b_pick = cal_bin_idx[pick]
+            y_pick = c_y[pick]
+            counts = np.bincount(b_pick, minlength=k_actual).astype(np.float64)
+            positives = np.bincount(b_pick, weights=y_pick, minlength=k_actual).astype(np.float64)
+            for m_name in methods:
+                est = compute_bin_calibrator_scores(
+                    counts, positives, method=m_name, prior_p=prior_p, delta=delta, prior_strength=prior_strength
+                )
+                acc_runs[m_name][r_idx] = _eval_mapped_pools_fast(
+                    test_groups_by_len, est, n_values, n_tests
+                )
+    else:
+        # 'sample_split'（命题 6.1 严格样本分割）或 'in_sample'：绝不访问 M 之外任何无标签分数
+        pre_tables = {
+            l_len: (
+                np.asarray(s_list, dtype=np.float64),
+                np.asarray(y_list, dtype=np.int64),
+                _build_hypergeom_table(l_len, n_values),
             )
+            for l_len, (s_list, y_list) in pools_by_len.items()
+        }
+        k_req = max(2, int(n_bins))
+        k_sum = 0
+        for r_idx in range(n_repeats):
+            pick = rng.choice(c_s.size, size=int(m_cal), replace=replace_draw)
+            s_draw = c_s[pick]
+            y_draw = c_y[pick]
+            if quantile_protocol == "sample_split" and int(m_cal) >= 4:
+                m_edge = int(m_cal) // 2
+                s_edge = np.sort(s_draw[:m_edge])
+                r_ord = np.floor(
+                    np.arange(1, k_req, dtype=np.float64) * float(m_edge + 1) / float(k_req)
+                ).astype(np.int64)
+                r_ord = np.clip(r_ord - 1, 0, m_edge - 1)
+                cand_edges = np.unique(s_edge[r_ord])
+                inner_edges = cand_edges if cand_edges.size >= 1 else np.array([float(np.median(s_edge))])
+                s_est = s_draw[m_edge:]
+                y_est = y_draw[m_edge:]
+            else:
+                edges = np.unique(np.quantile(s_draw, np.linspace(0.0, 1.0, k_req + 1)))
+                inner_edges = edges[1:-1] if edges.size >= 3 else np.array([float(np.median(s_draw))])
+                s_est = s_draw
+                y_est = y_draw
+
+            k_cur = int(inner_edges.size + 1)
+            k_sum += k_cur
+            b_est = np.searchsorted(inner_edges, s_est, side="right")
+            counts = np.bincount(b_est, minlength=k_cur).astype(np.float64)
+            positives = np.bincount(b_est, weights=y_est.astype(np.float64), minlength=k_cur)
+            prior_p = float(np.mean(y_est)) if y_est.size > 0 else 0.5
+
+            dyn_groups: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+            for l_len, (s_mat, y_mat, hg_tbl) in pre_tables.items():
+                p_l = s_mat.shape[0]
+                b_mat = np.searchsorted(inner_edges, s_mat, side="right")
+                flat_idx = (np.arange(p_l, dtype=np.int64)[:, None] * k_cur + b_mat).ravel()
+                c_mat = np.bincount(flat_idx, minlength=p_l * k_cur).reshape(p_l, k_cur)
+                pos_mat = np.bincount(
+                    flat_idx, weights=y_mat.ravel().astype(np.float64), minlength=p_l * k_cur
+                ).astype(np.int64).reshape(p_l, k_cur)
+                dyn_groups[l_len] = (c_mat, pos_mat, hg_tbl)
+
+            for m_name in methods:
+                est = compute_bin_calibrator_scores(
+                    counts, positives, method=m_name, prior_p=prior_p, delta=delta, prior_strength=prior_strength
+                )
+                acc_runs[m_name][r_idx] = _eval_mapped_pools_fast(dyn_groups, est, n_values, n_tests)
+        k_actual = int(round(k_sum / float(max(1, n_repeats))))
 
     method_out = {}
     for m_name in methods:
@@ -620,6 +681,7 @@ def evaluate_finite_calibration_on_real_pools(
         "m_cal": int(m_cal),
         "n_bins_actual": k_actual,
         "binning": binning,
+        "quantile_protocol": quantile_protocol if binning == "quantile" else "uniform_fixed_range",
         "standard_bon_accuracy": standard_bon_curve,
         "methods": method_out,
     }
@@ -1529,24 +1591,7 @@ def evaluate_real_prompt_heterogeneity(
                 if nv_int <= 1:
                     hybrid_branch_by_n[nv_int] = "Standard-BoN"
                     continue
-                if nv_int == 2:
-                    # N=2 时题内 Z-Score 纯秩退化（定理 7B(2)），使用精确超几何无方差比较 Raw vs Pooled
-                    std_sum, pool_sum, v_cnt = 0.0, 0.0, 0
-                    for ci in inner_val_idx:
-                        _, cs, cy = parsed[ci]
-                        if cs.size < 2:
-                            continue
-                        std_sum += float(exact_pool_bon_accuracy(cs, cy, [2])[0])
-                        pool_sum += float(exact_pool_bon_accuracy(pred_pooled_in(cs), cy, [2])[0])
-                        v_cnt += 1
-                    if v_cnt == 0:
-                        hybrid_branch_by_n[nv_int] = "Pooled-KL-LCB"
-                    elif std_sum > pool_sum + 1e-12:
-                        hybrid_branch_by_n[nv_int] = "Standard-BoN"
-                    else:
-                        hybrid_branch_by_n[nv_int] = "Pooled-KL-LCB"
-                    continue
-
+                # 对一切 N >= 2（含 N = 2，允许负均值偏移下的 Anti-BoN Z 分支参与竞争）执行统一三分支验证风险最小化
                 std_hits, pool_hits, within_hits, cal_cnt = 0.0, 0.0, 0.0, 0
                 for ci in inner_val_idx:
                     _, cs, cy = parsed[ci]
@@ -1802,6 +1847,291 @@ def evaluate_real_prompt_heterogeneity(
     }
 
 
+def evaluate_single_split_prompt_heterogeneity(
+    pools_with_strata: Sequence[tuple[str, np.ndarray, np.ndarray]],
+    n_values: Sequence[int] = (1, 2, 4, 8, 16, 32, 64),
+    split_ratios: tuple[float, float, float] = (0.50, 0.20, 0.30),
+    n_trials_per_problem: int = 25,
+    n_bins: int = 15,
+    delta: float = 0.05,
+    seed: int = 42,
+    n_bootstrap: int = 2_000,
+) -> dict[str, Any]:
+    """采用互不相交单次划分（Train / Val / Test）评估三分支门控与独立测试集显著性（修复 P1-03 & P1-04）。
+
+    设计与统计保证：
+    1. 将全部 P 道独立题目一次性划分为互不相交的 Train（默认 50%）、Val（20%）与 Held-Out Test（30%）；
+    2. 仅在 Train 上拟合 Pooled-KL-LCB 与 Within-Prompt-Z-KL-LCB，固定这三个候选规则（含 Standard-BoN）；
+    3. 在独立 Val 上对一切 N >= 2 执行统一三分支经验风险最小化选出 m_hat_N，**不重拟合训练模型**
+       （严格满足命题 7.1 固定规则条件，重拟合稳定性误差 epsilon_refit == 0；同时另行记录重拟合对照差值）；
+    4. 在完全独立的 Held-Out Test 题目上评估各规则：条件于已固定的单次训练/验证模型，各测试题配对差值
+       D_j（j = 1, ..., P_test）严格相互独立（完全消除交叉验证折间训练集重叠相关性），并采用无需对称分布假设的
+       双侧配对学生化 t 检验（Studentized paired t-test）作为主显著性 p 值，辅以 2000x 独立测试题 Cluster Bootstrap CI。
+    """
+    if len(pools_with_strata) < 6:
+        raise ValueError("evaluate_single_split_prompt_heterogeneity 至少需要 6 道题目以完成三段划分")
+    r_tr, r_val, r_te = (float(split_ratios[0]), float(split_ratios[1]), float(split_ratios[2]))
+    if r_tr <= 0.0 or r_val <= 0.0 or r_te <= 0.0 or abs((r_tr + r_val + r_te) - 1.0) > 1e-6:
+        raise ValueError("split_ratios 三分量必须为正且和等于 1")
+
+    parsed: list[tuple[str, np.ndarray, np.ndarray]] = []
+    for st_name, sc, yc in pools_with_strata:
+        s_arr = np.asarray(sc, dtype=np.float64).ravel()
+        y_arr = np.asarray(yc, dtype=bool).ravel()
+        if s_arr.size == 0 or s_arr.shape != y_arr.shape:
+            raise ValueError(f"域 {st_name!r} 存在空池或长度不匹配")
+        parsed.append((str(st_name), s_arr, y_arr))
+
+    n_probs = len(parsed)
+    rng = np.random.default_rng(seed)
+    # 按域分层随机打乱以保持 Train / Val / Test 域比例一致且无泄露
+    by_stratum: dict[str, list[int]] = {}
+    for idx, (st_name, _, _) in enumerate(parsed):
+        by_stratum.setdefault(st_name, []).append(idx)
+
+    train_idx_l, val_idx_l, test_idx_l = [], [], []
+    for st_name in sorted(by_stratum.keys()):
+        idxs = np.asarray(by_stratum[st_name], dtype=np.int64)
+        rng.shuffle(idxs)
+        n_s = idxs.size
+        n_tr_s = max(1, int(round(r_tr * n_s)))
+        n_val_s = max(1, int(round(r_val * n_s)))
+        if n_tr_s + n_val_s >= n_s:
+            n_tr_s = max(1, n_s - 2)
+            n_val_s = max(1, n_s - 1 - n_tr_s)
+        train_idx_l.append(idxs[:n_tr_s])
+        val_idx_l.append(idxs[n_tr_s : n_tr_s + n_val_s])
+        test_idx_l.append(idxs[n_tr_s + n_val_s :])
+
+    train_idx = np.concatenate(train_idx_l)
+    val_idx = np.concatenate(val_idx_l)
+    test_idx = np.concatenate(test_idx_l)
+
+    tr_s = np.concatenate([parsed[i][1] for i in train_idx])
+    tr_y = np.concatenate([parsed[i][2] for i in train_idx]).astype(np.float64)
+    tr_z = np.concatenate([_within_prompt_zscore_2d(parsed[i][1][None, :]).ravel() for i in train_idx])
+
+    pred_pooled_fixed, _ = _fit_sota_calibrator_predictor(tr_s, tr_y, method="kl_lcb", n_bins=n_bins, delta=delta)
+    pred_within_fixed, _ = _fit_sota_calibrator_predictor(tr_z, tr_y, method="kl_lcb", n_bins=n_bins, delta=delta)
+
+    # 同时拟合一份合并 Train+Val 的重拟合模型，仅用于定量测算 epsilon_refit 稳定性上界
+    trv_idx = np.concatenate([train_idx, val_idx])
+    trv_s = np.concatenate([parsed[i][1] for i in trv_idx])
+    trv_y = np.concatenate([parsed[i][2] for i in trv_idx]).astype(np.float64)
+    trv_z = np.concatenate([_within_prompt_zscore_2d(parsed[i][1][None, :]).ravel() for i in trv_idx])
+    pred_pooled_refit, _ = _fit_sota_calibrator_predictor(trv_s, trv_y, method="kl_lcb", n_bins=n_bins, delta=delta)
+    pred_within_refit, _ = _fit_sota_calibrator_predictor(trv_z, trv_y, method="kl_lcb", n_bins=n_bins, delta=delta)
+
+    n_arr = np.asarray(list(n_values), dtype=np.int64)
+    n_t = int(n_trials_per_problem)
+    val_rng = np.random.default_rng(int(seed) + 60_003)
+    val_rows = np.arange(n_t)
+
+    selected_branch_by_n: dict[str, str] = {}
+    for nv in n_arr:
+        nv_int = int(nv)
+        if nv_int <= 1:
+            selected_branch_by_n[str(nv_int)] = "Standard-BoN"
+            continue
+        std_h, pool_h, within_h, v_cnt = 0.0, 0.0, 0.0, 0
+        for vi in val_idx:
+            _, cs, cy = parsed[int(vi)]
+            if cs.size < nv_int:
+                continue
+            std_h += float(exact_pool_bon_accuracy(cs, cy, [nv_int])[0]) * float(n_t)
+            pool_h += float(exact_pool_bon_accuracy(pred_pooled_fixed(cs), cy, [nv_int])[0]) * float(n_t)
+            c_perms = np.array([val_rng.permutation(cs.size)[:nv_int] for _ in range(n_t)], dtype=np.int64)
+            cs_m = cs[c_perms]
+            cy_m = cy[c_perms]
+            idx_w = _argmax_random_tie_2d(pred_within_fixed(_within_prompt_zscore_2d(cs_m)), val_rng)
+            within_h += float(np.count_nonzero(cy_m[val_rows, idx_w]))
+            v_cnt += n_t
+        if v_cnt == 0:
+            selected_branch_by_n[str(nv_int)] = "Pooled-KL-LCB"
+        elif within_h > max(pool_h, std_h) + 1e-12:
+            selected_branch_by_n[str(nv_int)] = "Within-Prompt-Z-KL-LCB"
+        elif std_h > pool_h + 1e-12:
+            selected_branch_by_n[str(nv_int)] = "Standard-BoN"
+        else:
+            selected_branch_by_n[str(nv_int)] = "Pooled-KL-LCB"
+
+    algo_names = (
+        "Standard-BoN",
+        "Pooled-KL-LCB",
+        "Within-Prompt-Z-KL-LCB",
+        "Hybrid-Fixed-KL-LCB",
+        "Hybrid-Refit-KL-LCB",
+    )
+    n_test = int(test_idx.size)
+    test_acc = {a: np.full((n_test, n_arr.size), np.nan, dtype=np.float64) for a in algo_names}
+    refit_pooled_mat = np.full((n_test, n_arr.size), np.nan, dtype=np.float64)
+    refit_within_mat = np.full((n_test, n_arr.size), np.nan, dtype=np.float64)
+
+    test_rng = np.random.default_rng(int(seed) + 70_003)
+    t_rows = np.arange(n_t)
+    for local_i, p_idx in enumerate(test_idx):
+        _, s_arr, y_arr = parsed[int(p_idx)]
+        pool_len = int(s_arr.size)
+        valid_n = n_arr[n_arr <= pool_len]
+        if valid_n.size == 0:
+            continue
+        max_n = int(np.max(valid_n))
+        perms = np.array([test_rng.permutation(pool_len)[:max_n] for _ in range(n_t)], dtype=np.int64)
+        s_full = s_arr[perms]
+        y_full = y_arr[perms]
+        pf_full = pred_pooled_fixed(s_full)
+        pr_full = pred_pooled_refit(s_full)
+
+        for k_idx, nv in enumerate(n_arr):
+            nv_int = int(nv)
+            if nv_int > pool_len:
+                continue
+            s_sub = s_full[:, :nv_int]
+            y_sub = y_full[:, :nv_int]
+
+            idx_std = _argmax_random_tie_2d(s_sub, test_rng)
+            a_std = float(np.count_nonzero(y_sub[t_rows, idx_std])) / float(n_t)
+            idx_pf = _argmax_random_tie_2d(pf_full[:, :nv_int], test_rng)
+            a_pf = float(np.count_nonzero(y_sub[t_rows, idx_pf])) / float(n_t)
+            idx_pr = _argmax_random_tie_2d(pr_full[:, :nv_int], test_rng)
+            a_pr = float(np.count_nonzero(y_sub[t_rows, idx_pr])) / float(n_t)
+            refit_pooled_mat[local_i, k_idx] = a_pr
+
+            test_acc["Standard-BoN"][local_i, k_idx] = a_std
+            test_acc["Pooled-KL-LCB"][local_i, k_idx] = a_pf
+
+            if nv_int == 1:
+                h1 = float(np.count_nonzero(y_sub[:, 0])) / float(n_t)
+                test_acc["Within-Prompt-Z-KL-LCB"][local_i, k_idx] = h1
+                test_acc["Hybrid-Fixed-KL-LCB"][local_i, k_idx] = h1
+                test_acc["Hybrid-Refit-KL-LCB"][local_i, k_idx] = h1
+                refit_within_mat[local_i, k_idx] = h1
+            else:
+                z_sub = _within_prompt_zscore_2d(s_sub)
+                idx_wf = _argmax_random_tie_2d(pred_within_fixed(z_sub), test_rng)
+                a_wf = float(np.count_nonzero(y_sub[t_rows, idx_wf])) / float(n_t)
+                idx_wr = _argmax_random_tie_2d(pred_within_refit(z_sub), test_rng)
+                a_wr = float(np.count_nonzero(y_sub[t_rows, idx_wr])) / float(n_t)
+                test_acc["Within-Prompt-Z-KL-LCB"][local_i, k_idx] = a_wf
+                refit_within_mat[local_i, k_idx] = a_wr
+
+                br = selected_branch_by_n[str(nv_int)]
+                if br == "Within-Prompt-Z-KL-LCB":
+                    test_acc["Hybrid-Fixed-KL-LCB"][local_i, k_idx] = a_wf
+                    test_acc["Hybrid-Refit-KL-LCB"][local_i, k_idx] = a_wr
+                elif br == "Standard-BoN":
+                    test_acc["Hybrid-Fixed-KL-LCB"][local_i, k_idx] = a_std
+                    test_acc["Hybrid-Refit-KL-LCB"][local_i, k_idx] = a_std
+                else:
+                    test_acc["Hybrid-Fixed-KL-LCB"][local_i, k_idx] = a_pf
+                    test_acc["Hybrid-Refit-KL-LCB"][local_i, k_idx] = a_pr
+
+    n_boot = int(n_bootstrap)
+    algo_out: dict[str, dict[str, np.ndarray]] = {
+        a: {
+            "accuracy": np.zeros(n_arr.size, dtype=np.float64),
+            "se": np.zeros(n_arr.size, dtype=np.float64),
+            "ci_low": np.zeros(n_arr.size, dtype=np.float64),
+            "ci_high": np.zeros(n_arr.size, dtype=np.float64),
+        }
+        for a in algo_names
+    }
+    refit_shift_by_n = np.zeros(n_arr.size, dtype=np.float64)
+
+    def _paired_ttest_and_boot(
+        v1: np.ndarray, v2: np.ndarray, b_rng: np.random.Generator
+    ) -> tuple[float, float, float, float, float]:
+        d_vec = v1 - v2
+        m_d = float(np.mean(d_vec))
+        n_v = d_vec.size
+        if n_v <= 1:
+            return m_d, 0.0, m_d, m_d, 1.0
+        sd_d = float(np.std(d_vec, ddof=1))
+        if sd_d <= 1e-15:
+            p_t = 1.0 if abs(m_d) <= 1e-15 else 0.0
+            return m_d, 0.0, m_d, m_d, p_t
+        se_analytic = sd_d / math.sqrt(float(n_v))
+        t_stat = abs(m_d) / se_analytic
+        p_t = float(2.0 * special.stdtr(float(n_v - 1), -t_stat))
+        b_idx = b_rng.integers(0, n_v, size=(max(2, n_boot), n_v))
+        b_means = np.mean(d_vec[b_idx], axis=1)
+        lo_d, hi_d = np.percentile(b_means, [2.5, 97.5])
+        return m_d, float(np.std(b_means, ddof=1)), float(lo_d), float(hi_d), p_t
+
+    comp_targets = ("Within-Prompt-Z-KL-LCB", "Hybrid-Fixed-KL-LCB", "Hybrid-Refit-KL-LCB", "Standard-BoN")
+    vs_pooled = {
+        c: {
+            "mean_diff": np.zeros(n_arr.size),
+            "se_diff": np.zeros(n_arr.size),
+            "ci_low": np.zeros(n_arr.size),
+            "ci_high": np.zeros(n_arr.size),
+            "p_value_ttest": np.ones(n_arr.size),
+        }
+        for c in comp_targets
+    }
+    vs_std = {
+        c: {
+            "mean_diff": np.zeros(n_arr.size),
+            "se_diff": np.zeros(n_arr.size),
+            "ci_low": np.zeros(n_arr.size),
+            "ci_high": np.zeros(n_arr.size),
+            "p_value_ttest": np.ones(n_arr.size),
+        }
+        for c in ("Pooled-KL-LCB", "Within-Prompt-Z-KL-LCB", "Hybrid-Fixed-KL-LCB", "Hybrid-Refit-KL-LCB")
+    }
+
+    for k_idx in range(n_arr.size):
+        valid = ~np.isnan(test_acc["Standard-BoN"][:, k_idx])
+        n_v = int(np.count_nonzero(valid))
+        vecs = {a: test_acc[a][valid, k_idx] for a in algo_names}
+        shift_p = abs(float(np.mean(refit_pooled_mat[valid, k_idx] - vecs["Pooled-KL-LCB"])))
+        shift_w = abs(float(np.mean(refit_within_mat[valid, k_idx] - vecs["Within-Prompt-Z-KL-LCB"])))
+        refit_shift_by_n[k_idx] = max(shift_p, shift_w)
+
+        b_rng = np.random.default_rng(int(seed) + 80_003 + k_idx)
+        b_idx = b_rng.integers(0, n_v, size=(max(2, n_boot), n_v))
+        for a in algo_names:
+            algo_out[a]["accuracy"][k_idx] = float(np.mean(vecs[a]))
+            bm = np.mean(vecs[a][b_idx], axis=1)
+            algo_out[a]["se"][k_idx] = float(np.std(bm, ddof=1))
+            ql, qh = np.percentile(bm, [2.5, 97.5])
+            algo_out[a]["ci_low"][k_idx] = float(np.clip(ql, 0.0, 1.0))
+            algo_out[a]["ci_high"][k_idx] = float(np.clip(qh, 0.0, 1.0))
+
+        for c in comp_targets:
+            md, sed, cl, ch, pt = _paired_ttest_and_boot(vecs[c], vecs["Pooled-KL-LCB"], b_rng)
+            vs_pooled[c]["mean_diff"][k_idx] = md
+            vs_pooled[c]["se_diff"][k_idx] = sed
+            vs_pooled[c]["ci_low"][k_idx] = cl
+            vs_pooled[c]["ci_high"][k_idx] = ch
+            vs_pooled[c]["p_value_ttest"][k_idx] = pt
+
+        for c in vs_std:
+            md, sed, cl, ch, pt = _paired_ttest_and_boot(vecs[c], vecs["Standard-BoN"], b_rng)
+            vs_std[c]["mean_diff"][k_idx] = md
+            vs_std[c]["se_diff"][k_idx] = sed
+            vs_std[c]["ci_low"][k_idx] = cl
+            vs_std[c]["ci_high"][k_idx] = ch
+            vs_std[c]["p_value_ttest"][k_idx] = pt
+
+    return {
+        "n_total_problems": n_probs,
+        "n_train_problems": int(train_idx.size),
+        "n_val_problems": int(val_idx.size),
+        "n_test_problems": n_test,
+        "n_values": n_arr,
+        "selected_branch_by_n": selected_branch_by_n,
+        "empirical_refit_shift_by_n": refit_shift_by_n,
+        "holdout_selection_bound_95": float(
+            2.0 * math.sqrt(math.log(2.0 * 3.0 / 0.05) / max(1.0, 2.0 * float(val_idx.size)))
+        ),
+        "primary_inference_method": "disjoint_single_split_paired_studentized_ttest",
+        "paired_test_vs_pooled": vs_pooled,
+        "paired_test_vs_standard_bon": vs_std,
+        "algorithms": algo_out,
+    }
+
+
 __all__ = [
     "diagnose_multi_verifier_correlations",
     "diagnose_real_verifier_distribution",
@@ -1810,6 +2140,7 @@ __all__ = [
     "evaluate_heterogeneous_multi_rm_on_real_pools",
     "evaluate_joint_m_n_calibration_on_real_pools",
     "evaluate_real_prompt_heterogeneity",
+    "evaluate_single_split_prompt_heterogeneity",
     "exact_pool_bon_accuracy",
     "extract_boxed_answer",
     "fit_and_predict_sota_calibrator",

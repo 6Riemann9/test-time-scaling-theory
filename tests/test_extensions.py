@@ -126,7 +126,7 @@ def test_theorem5b_heavy_tail_mean_vs_min_separation_and_shared_breakdown() -> N
     assert float(res_mean["accuracy"][-1]) < 0.15
     assert float(res_min["accuracy"][-1]) > 0.85
 
-    # 注入同源漏洞 epsilon_shared=0.05 -> Min 被彻底击穿重新坍塌
+    # 注入同源漏洞 epsilon_shared=0.05 -> Min 被击穿重新坍塌
     spec_shared = HeavyTailMultiVerifierSpec(
         p=0.25, mu1=1.2, sigma1=1.0, mu0=0.0, sigma0=1.0,
         num_verifiers=4, alpha1=5.0, alpha0=1.8, eta1=0.15, eta0=0.15, epsilon_shared=0.05,
@@ -199,7 +199,7 @@ def test_theorem6_secondary_collapse_and_lcb_mitigation() -> None:
     spec = GaussianVerifierSpec(p=0.25, mu1=1.2, sigma1=1.0, mu0=0.0, sigma0=1.5)
     n_values = [1, 4, 16, 64, 256, 1024, 5000]
 
-    # 1) 非均匀等宽分桶（M=300, K=20）：MLE 出现典型过峰二次坍塌，Wilson-LCB 彻底消除
+    # 1) 非均匀等宽分桶（M=300, K=20）：MLE 出现典型过峰二次坍塌，Wilson-LCB 有效抑制
     sim_uni = simulate_finite_calibration_scaling(
         spec,
         m_cal=300,

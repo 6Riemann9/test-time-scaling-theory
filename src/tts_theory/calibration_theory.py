@@ -454,21 +454,22 @@ def empirical_quantile_spacings_bounds(
     n_bins: int,
     delta: float = 0.05,
 ) -> dict[str, float | int | bool]:
-    """评估样本分割经验等频分桶的一致桶质量乘性浓缩界（定理 6C 命题，覆盖一切 beta > 0）。
+    """评估样本分割经验等频分桶的一致桶质量乘性浓缩界（定理 6C 命题 6.1，覆盖一切 beta > 0）。
 
     将容量 M 的校准集平分为边界子集 D_{M_1}^{edge}（M_1 = floor(M/2)）与估计子集 D_{M_2}^{est}
     （M_2 = M - M_1）。取顺序统计量下标 r_k = floor(k * (M_1 + 1) / K)，由连续 CDF 变换与
     Rényi-Pyke 指数间距表示，真实桶质量满足：
         pi_hat_k = U_{(r_k)} - U_{(r_{k-1})} =^d G_k / G_tot,
     其中 G_k ~ Gamma(d_k, 1)（d_k = r_k - r_{k-1}），G_tot ~ Gamma(M_1 + 1, 1)。
-    对 Gamma(d, 1) 应用精确 Cramér-Chernoff 界：
-        P(G_k < 3/4 * d_k) <= exp(-psi_-(3/4) * d_k),   psi_-(3/4) = -1/4 - ln(3/4) > 1/27,
-        P(G_k > 4/3 * d_k) <= exp(-psi_+(4/3) * d_k),   psi_+(4/3) =  1/3 - ln(4/3) > 1/27,
-        P(G_tot notin [4/5*(M_1+1), 5/4*(M_1+1)]) <= 2 * exp(-(M_1 + 1) / 45).
-    当 M_1 + 1 >= 6*K 且 d_min >= 27 * ln(4*K / delta) 时（即 M = Omega(K * ln(K / delta))），
+    当 M_1 + 1 >= 12*K 时，11/12 <= d_k * K / (M_1 + 1) <= 13/12；对 Gamma(d, 1) 应用精确 Cramér 界：
+        P(G_k < 0.60 * d_k) <= exp(-psi_-(0.60) * d_k),   psi_-(0.60) = -0.40 - ln(0.60) > 1/9.1,
+        P(G_k > 1.65 * d_k) <= exp(-psi_+(1.65) * d_k),   psi_+(1.65) =  0.65 - ln(1.65) > 1/9.1,
+        P(G_tot notin [0.90*(M_1+1), 1.10*(M_1+1)]) <= exp(-psi_-(0.90)*(M_1+1)) + exp(-psi_+(1.10)*(M_1+1)).
+    当 M_1 + 1 >= max(12*K, 214*ln(4/delta)) 且 d_min >= 9.1 * ln(4*K / delta) 时（即 M = Omega(K * ln(K / delta))），
     以至少 1 - delta 的概率对全体 k = 1, ..., K 同时成立：
-        1 / (2*K) <= pi_hat_k <= 35 / (18*K) < 2 / K.
-    相比之下，加性 DKW 界的相对误差阶 K * sqrt(ln(2/delta) / (2*M_1)) 在 0 < beta <= 0.5 时不趋于 0。
+        1 / (2*K) <= pi_hat_k <= 143 / (72*K) < 2 / K.
+    此时估计集桶样本下界由总体等频的 M/(2K) 变为 M/(8K)，故 Pinsker/Hoeffding 统计惩罚项常数放大因子精确为
+    sqrt((M/(2K)) / (M/(8K))) = 2.0（而非 sqrt(2)）。
     """
     m_int = int(m_total)
     k_int = int(n_bins)
@@ -483,18 +484,21 @@ def empirical_quantile_spacings_bounds(
     d_min = int(np.min(d_spacings))
     d_max = int(np.max(d_spacings))
 
-    psi_lo = -0.25 - math.log(0.75)  # 0.03768207... > 1/27
-    psi_hi = (1.0 / 3.0) - math.log(4.0 / 3.0)  # 0.04565126... > 1/27
-    psi_tot_lo = -0.20 - math.log(0.80)  # 0.02314355... > 1/45
-    psi_tot_hi = 0.25 - math.log(1.25)  # 0.02685645... > 1/45
+    psi_lo = -0.40 - math.log(0.60)   # 0.11082562... > 1 / 9.1
+    psi_hi = 0.65 - math.log(1.65)    # 0.14922468... > 1 / 9.1
+    psi_tot_lo = -0.10 - math.log(0.90)  # 0.00536051... > 1 / 187
+    psi_tot_hi = 0.10 - math.log(1.10)   # 0.00468982... > 1 / 214
 
     fail_prob_spacings = float(
         np.sum(np.exp(-psi_lo * d_spacings) + np.exp(-psi_hi * d_spacings))
         + math.exp(-psi_tot_lo * float(m1 + 1))
         + math.exp(-psi_tot_hi * float(m1 + 1))
     )
-    d_min_required = float(27.0 * math.log(4.0 * float(k_int) / delta_f))
-    spacings_condition_holds = bool((m1 + 1 >= 6 * k_int) and (float(d_min) >= d_min_required))
+    d_min_required = float(9.1 * math.log(4.0 * float(k_int) / delta_f))
+    m1_tot_required = float(max(12.0 * float(k_int), 214.0 * math.log(4.0 / delta_f)))
+    spacings_condition_holds = bool(
+        (float(m1 + 1) >= m1_tot_required) and (float(d_min) >= d_min_required)
+    )
 
     # 对比加性 DKW 相对误差上界：sup_k |pi_hat_k - 1/K| * K <= 2 * K * sqrt(ln(2/delta) / (2 * M_1))
     dkw_rel_err = float(2.0 * float(k_int) * math.sqrt(math.log(2.0 / delta_f) / max(1.0, 2.0 * float(m1))))
@@ -507,10 +511,12 @@ def empirical_quantile_spacings_bounds(
         "d_min": d_min,
         "d_max": d_max,
         "d_min_required": d_min_required,
+        "m_edge_plus_one_required": m1_tot_required,
         "spacings_failure_prob_upper": min(1.0, fail_prob_spacings),
         "spacings_condition_holds": spacings_condition_holds,
         "guaranteed_pi_lower_factor": 0.5,
-        "guaranteed_pi_upper_factor": 35.0 / 18.0,
+        "guaranteed_pi_upper_factor": 143.0 / 72.0,
+        "lcb_penalty_inflation_factor": 2.0,
         "dkw_relative_error_bound": dkw_rel_err,
         "dkw_non_vacuous": bool(dkw_rel_err < 0.5),
     }
@@ -575,6 +581,10 @@ def tight_joint_minimax_scaling(
         m_total=m_int, n_bins=max(2, k_opt), delta=min(0.25, 1.0 / float(4 * m_int))
     )
     upper_to_lower_rate_ratio = float(total_upper_bound / max(minimax_rate_lower, 1e-30))
+    balance_n = float((float(m_int) / max(1.0, math.log(float(m_int)))) ** (1.0 / (2.0 * beta_f + 1.0)))
+    bottleneck_regime = (
+        "offline_calibration_dominated" if float(n_int) > balance_n else "online_compute_dominated"
+    )
 
     return {
         "m_total": m_int,
@@ -582,6 +592,8 @@ def tight_joint_minimax_scaling(
         "beta": beta_f,
         "c_beta_factor": float(c_beta),
         "n_agnostic_k_opt": k_opt,
+        "calibration_compute_balance_n": balance_n,
+        "bottleneck_regime": bottleneck_regime,
         "failure_term": failure_term,
         "miss_neighborhood_term": miss_neighborhood_term,
         "bin_bias_term": bin_bias_term,
