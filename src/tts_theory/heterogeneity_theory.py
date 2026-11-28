@@ -471,6 +471,7 @@ def diagnose_zscore_induced_collapse(
     mu0_base: float = 0.0,
     sigma0_base: float = 1.0,
     z_grid: ArrayLike | None = None,
+    constrain_nonnegative_z: bool = False,
 ) -> dict:
     """诊断总体题内 Z-Score 标准化下的右尾竞争反转与渐近上限损失（定理 7C）。
 
@@ -478,6 +479,8 @@ def diagnose_zscore_induced_collapse(
     1. 核心尾部反转效应（无条件成立）：边界原子方差缩放为 1，而所有内点可解题承受方差压缩
        v(p) < 1，因此在 Z*-空间精确导出右尾极限 pi_1 / (pi_0 + pi_1)（当 pi_0 > 0 = pi_1 时
        跌向 0 并导致 Oracle Z*-校准器在大 N 下的渐近上限低于 Raw-BoN）；
+       当 pi_0 = 0, pi_1 > 0 且无右半轴约束（constrain_nonnegative_z=False）时，若多内点层
+       触发高先验层左尾反超条件，亦会产生正的渐近上限损失。
     2. 全方差分解中的总体异方差比 kappa_Z：一般情形下 Var(Z*|Y=c) = E[v(p)|Y=c] + Var(m_c|Y=c)，
        多内点层且 Delta 足够大时可能出现 kappa_Z < 1（虽右尾仍趋于 0）；在单内点可解层 {0, p_1}
        （pi_0 > 0, Delta > 0）下因 Var(m_1 | Y=1) = 0 而严格满足 kappa_Z > 1。
@@ -496,7 +499,7 @@ def diagnose_zscore_induced_collapse(
         raise ValueError("sigma1_base 与 sigma0_base 必须严格为正")
 
     if z_grid is None:
-        grid = np.linspace(-3.5, 6.0, 951, dtype=np.float64)
+        grid = np.linspace(-4.0, 8.0, 1201, dtype=np.float64)
     else:
         grid = np.asarray(z_grid, dtype=np.float64).ravel()
         if grid.size < 5:
@@ -530,22 +533,36 @@ def diagnose_zscore_induced_collapse(
     # 精确解析计算 Z*-空间池化密度与后验 q_{pool, Z}(z)
     pos_idx = np.flatnonzero(p_arr > 0.0)
     neg_idx = np.flatnonzero(p_arr < 1.0)
-    log_pos_comp = np.array(
-        [math.log(float(w[g] * p_arr[g])) + _norm_logpdf(grid, float(m1_g[g]), float(sd1_g[g])) for g in pos_idx]
-    )
-    log_neg_comp = np.array(
-        [
-            math.log(float(w[g] * (1.0 - p_arr[g]))) + _norm_logpdf(grid, float(m0_g[g]), float(sd0_g[g]))
-            for g in neg_idx
-        ]
-    )
-    log_pos = _logsumexp_components(log_pos_comp)
-    log_neg = _logsumexp_components(log_neg_comp)
-    q_pool_z = np.asarray(special.expit(log_pos - log_neg), dtype=np.float64)
+    log_w_pos = np.log(w[pos_idx] * p_arr[pos_idx])
+    log_w_neg = np.log(w[neg_idx] * (1.0 - p_arr[neg_idx]))
+
+    def _eval_z_stats(z_pts: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """返回 (q_pool_z, logit_q_pool_z, dq_dz) 避免极端尾部饱和导致的假峰值。"""
+        lp_comps = np.array(
+            [float(log_w_pos[j]) + _norm_logpdf(z_pts, float(m1_g[g]), float(sd1_g[g])) for j, g in enumerate(pos_idx)]
+        )
+        ln_comps = np.array(
+            [float(log_w_neg[j]) + _norm_logpdf(z_pts, float(m0_g[g]), float(sd0_g[g])) for j, g in enumerate(neg_idx)]
+        )
+        lp = _logsumexp_components(lp_comps)
+        ln = _logsumexp_components(ln_comps)
+        logit_q = lp - ln
+        q_vals = np.asarray(special.expit(logit_q), dtype=np.float64)
+
+        # 精确对数导数：d/dz ln f_pos - d/dz ln f_neg
+        w1 = np.exp(lp_comps - lp[None, :])
+        w0 = np.exp(ln_comps - ln[None, :])
+        d_pos = np.sum(w1 * (-(z_pts[None, :] - m1_g[pos_idx, None]) / (sd1_g[pos_idx, None] ** 2)), axis=0)
+        d_neg = np.sum(w0 * (-(z_pts[None, :] - m0_g[neg_idx, None]) / (sd0_g[neg_idx, None] ** 2)), axis=0)
+        llr_deriv = d_pos - d_neg
+        return q_vals, logit_q, q_vals * (1.0 - q_vals) * llr_deriv
+
+    q_pool_z, logit_grid, deriv_grid = _eval_z_stats(grid)
 
     pi_0 = float(np.sum(w[p_arr <= 1e-15]))
     pi_1 = float(np.sum(w[p_arr >= 1.0 - 1e-15]))
-    if pi_0 + pi_1 > 0.0 and abs(s1 - s0) <= 1e-12:
+    is_homoscedastic_boundary = bool((pi_0 + pi_1 > 0.0) and abs(s1 - s0) <= 1e-12)
+    if is_homoscedastic_boundary:
         z_tail_limit = float(pi_1 / (pi_0 + pi_1))
     else:
         min_rate_pos = float(np.min(0.5 / (sd1_g[pos_idx] ** 2)))
@@ -553,13 +570,89 @@ def diagnose_zscore_induced_collapse(
         if abs(min_rate_pos - min_rate_neg) > 1e-12:
             z_tail_limit = 1.0 if min_rate_pos < min_rate_neg else 0.0
         else:
-            q_tail = float(q_pool_z[-1])
-            z_tail_limit = q_tail
+            z_tail_limit = float(q_pool_z[-1])
 
-    peak_idx = int(np.argmax(q_pool_z))
-    z_peak = float(grid[peak_idx])
-    q_z_peak = float(q_pool_z[peak_idx])
-    tail_turn_down = bool(float(q_pool_z[-1]) < q_z_peak - 1e-3)
+    # 实用窗口严格差分单调性检验：逐点检查 q_pool_z 在 grid 上是否全局单调不减，
+    # 诚实捕获左端浅谷回撤（例如 Case 2 在 [-4, -3.68] 微降至 0.5233，仅在 [-3.6, 8] 严格单调）
+    grid_peak_idx = int(np.argmax(logit_grid))
+    practical_window_monotone = bool(np.all(np.diff(q_pool_z) >= -1e-12))
+    right_prac_mask = grid >= (-3.6 - 1e-12)
+    practical_right_window_monotone = (
+        bool(np.all(np.diff(q_pool_z[right_prac_mask]) >= -1e-12))
+        if int(np.sum(right_prac_mask)) >= 2
+        else practical_window_monotone
+    )
+    prac_min_idx = int(np.argmin(q_pool_z))
+    practical_window_min_z = float(grid[prac_min_idx])
+    practical_window_min_q = float(q_pool_z[prac_min_idx])
+
+    # 全局理论峰检测：当默认网格未覆盖真峰（如高 pi_1 把 K* 推向右尾 z > 8）时自动扩界搜索
+    search_grid = grid
+    search_q = q_pool_z
+    search_logit = logit_grid
+    search_deriv = deriv_grid
+    need_adaptive = bool(
+        (z_grid is None)
+        or (
+            is_homoscedastic_boundary
+            and pi_0 > 0.0
+            and dmu > 0.0
+            and (grid_peak_idx in (0, grid.size - 1) or float(deriv_grid[-1]) > 0.0)
+        )
+    )
+    if need_adaptive and not (is_homoscedastic_boundary and pi_0 == 0.0 and pi_1 > 0.0 and dmu > 0.0):
+        hi_ext = max(30.0, float(grid[-1]))
+        lo_ext = min(-30.0, float(grid[0]))
+        for _ in range(6):
+            cand_grid = np.linspace(lo_ext, hi_ext, 12001, dtype=np.float64)
+            cand_q, cand_logit, cand_deriv = _eval_z_stats(cand_grid)
+            c_idx = int(np.argmax(cand_logit))
+            # 若仍在右端上升或未超越 L_tail（且理论保证 pi_0 > 0 下必超越），继续右扩界
+            if is_homoscedastic_boundary and pi_0 > 0.0 and dmu > 0.0:
+                if c_idx >= cand_grid.size - 2 or float(cand_deriv[-1]) > 0.0 or float(cand_q[c_idx]) <= z_tail_limit + 1e-12:
+                    hi_ext *= 2.0
+                    continue
+            search_grid, search_q, search_logit, search_deriv = cand_grid, cand_q, cand_logit, cand_deriv
+            break
+        else:
+            search_grid, search_q, search_logit, search_deriv = cand_grid, cand_q, cand_logit, cand_deriv
+
+    if is_homoscedastic_boundary and pi_0 == 0.0 and pi_1 > 0.0 and dmu > 0.0:
+        # Theorem 3(1)(a)：L_tail = 1，所有有限点 q_{pool,Z*}(z) < 1，无紧致全局极大值点
+        peak_idx = int(np.argmax(q_pool_z))
+        z_peak = float(grid[peak_idx])
+        q_z_peak = float(q_pool_z[peak_idx])
+        tail_turn_down = False
+        peak_minus_tail_limit = float(q_z_peak - z_tail_limit)
+        peak_exceeds_tail_limit = False
+        compact_maximizer_exists = False
+        boundary_dominated_regime = False
+    else:
+        s_peak_idx = int(np.argmax(search_logit))
+        z_peak = float(search_grid[s_peak_idx])
+        q_z_peak = float(search_q[s_peak_idx])
+        # 若为严格内点峰，用有界一维寻优精确锁定 K* 坐标
+        if 0 < s_peak_idx < search_grid.size - 1:
+            from scipy import optimize
+
+            opt_res = optimize.minimize_scalar(
+                lambda zz: -float(_eval_z_stats(np.array([zz], dtype=np.float64))[1][0]),
+                bounds=(float(search_grid[s_peak_idx - 1]), float(search_grid[s_peak_idx + 1])),
+                method="bounded",
+                options={"xatol": 1e-8},
+            )
+            if opt_res.success:
+                z_opt = float(opt_res.x)
+                q_opt, logit_opt, _ = _eval_z_stats(np.array([z_opt], dtype=np.float64))
+                if float(logit_opt[0]) >= float(search_logit[s_peak_idx]):
+                    z_peak = z_opt
+                    q_z_peak = float(q_opt[0])
+
+        tail_turn_down = bool(float(search_q[-1]) < q_z_peak - 1e-3)
+        peak_minus_tail_limit = float(q_z_peak - z_tail_limit)
+        peak_exceeds_tail_limit = bool(pi_0 > 0.0 and peak_minus_tail_limit > 1e-10)
+        compact_maximizer_exists = bool(peak_exceeds_tail_limit and is_homoscedastic_boundary)
+        boundary_dominated_regime = bool(pi_0 > 0.0 and not peak_exceeds_tail_limit)
 
     if s0 < s1 - 1e-12 or (abs(s0 - s1) <= 1e-12 and dmu > 0.0):
         raw_bon_asymptotic_acc = float(1.0 - pi_0)
@@ -568,18 +661,69 @@ def diagnose_zscore_induced_collapse(
     else:
         raw_bon_asymptotic_acc = float(pi_1)
 
-    # 总体标准化 Z* 空间 Oracle 校准器在极限处选择 z_peak 附近样本（渐近上限损失分析）
+    # 总体标准化 Z* 空间 Oracle 校准器在极限处选择 K* 附近样本；
+    # 仅当无紧致全局极大值且（启用 Z>=0 约束、至多单内点层、或未触发多内点左尾反超）时渐近无上限损失；
+    # 若 pi_0 = 0, pi_1 > 0 且无非负约束并在多内点下触发左尾反超，则逐层判定反超损失。
     solvable_interior = (p_arr > 0.0) & (p_arr < 1.0)
-    oracle_z_acc = float(pi_1)
-    if np.any(solvable_interior):
-        for g in np.flatnonzero(solvable_interior):
-            lp_g = math.log(float(p_arr[g])) + _norm_logpdf(np.array([z_peak]), float(m1_g[g]), float(sd1_g[g]))[0]
-            ln_g = math.log(float(1.0 - p_arr[g])) + _norm_logpdf(np.array([z_peak]), float(m0_g[g]), float(sd0_g[g]))[0]
-            q_at_peak = float(special.expit(lp_g - ln_g))
-            oracle_z_acc += float(w[g]) * q_at_peak
+    int_indices = np.flatnonzero(solvable_interior)
+    overtaken_strata: list[int] = []
+    left_tail_overtake = False
+    if (not compact_maximizer_exists) and is_homoscedastic_boundary and (pi_0 <= 1e-15) and (pi_1 > 0.0) and dmu > 0.0:
+        if (not constrain_nonnegative_z) and int_indices.size >= 2:
+            v_int = sd1_g[int_indices] ** 2
+            v_max = float(np.max(v_int))
+            vmax_mask = v_int >= (v_max - 1e-12)
+            abs_m0_vmax = np.abs(m0_g[int_indices[vmax_mask]])
+            k_plus_abs_m0 = float(np.min(abs_m0_vmax))
+            k_minus_abs_m0 = float(np.max(abs_m0_vmax))
+            for g_val in int_indices:
+                g = int(g_val)
+                overtake_margin = (1.0 - v_max) * (abs(float(m0_g[g])) - float(m1_g[g])) - (
+                    k_plus_abs_m0 + k_minus_abs_m0
+                )
+                if overtake_margin > 1e-12:
+                    overtaken_strata.append(g)
+                elif abs(overtake_margin) <= 1e-12:
+                    # 精确边界平局时，使用极大渐近偏差 u=50 在对数几率域判定左右极值先后
+                    u_probe = 50.0
+                    z_pair = np.array(
+                        [
+                            float(m1_g[g]) + float(sd1_g[g]) * u_probe,
+                            float(m0_g[g]) - float(sd0_g[g]) * u_probe,
+                        ],
+                        dtype=np.float64,
+                    )
+                    _, logit_pair, _ = _eval_z_stats(z_pair)
+                    if float(logit_pair[1]) > float(logit_pair[0]) + 1e-9:
+                        overtaken_strata.append(g)
+        left_tail_overtake = len(overtaken_strata) > 0
+        if not left_tail_overtake:
+            oracle_z_acc = float(raw_bon_asymptotic_acc)
+            ceiling_loss = 0.0
+            has_ceiling_loss = False
+        else:
+            overtaken_set = set(overtaken_strata)
+            oracle_z_acc = float(
+                pi_1 + sum(float(w[int(g)]) for g in int_indices if int(g) not in overtaken_set)
+            )
+            ceiling_loss = float(raw_bon_asymptotic_acc - oracle_z_acc)
+            has_ceiling_loss = bool(ceiling_loss > 1e-4)
+    else:
+        oracle_z_acc = float(pi_1)
+        if np.any(solvable_interior):
+            # 若存在多个离散全局极大值点 |K*| >= 2，此处取优化器定位的代表性极大值 z_peak ∈ K* 评估极限准确度
+            for g in int_indices:
+                lp_g = math.log(float(p_arr[g])) + _norm_logpdf(
+                    np.array([z_peak]), float(m1_g[g]), float(sd1_g[g])
+                )[0]
+                ln_g = math.log(float(1.0 - p_arr[g])) + _norm_logpdf(
+                    np.array([z_peak]), float(m0_g[g]), float(sd0_g[g])
+                )[0]
+                q_at_peak = float(special.expit(lp_g - ln_g))
+                oracle_z_acc += float(w[g]) * q_at_peak
 
-    ceiling_loss = float(raw_bon_asymptotic_acc - float(oracle_z_acc))
-    has_ceiling_loss = bool(tail_turn_down and ceiling_loss > 1e-3)
+        ceiling_loss = float(raw_bon_asymptotic_acc - float(oracle_z_acc))
+        has_ceiling_loss = bool(tail_turn_down and ceiling_loss > 1e-4)
 
     return {
         "z_grid": grid,
@@ -598,6 +742,17 @@ def diagnose_zscore_induced_collapse(
         "q_z_peak": q_z_peak,
         "z_tail_value": float(q_pool_z[-1]),
         "z_tail_posterior_limit": z_tail_limit,
+        "peak_minus_tail_limit": peak_minus_tail_limit,
+        "peak_exceeds_tail_limit": peak_exceeds_tail_limit,
+        "compact_maximizer_exists": compact_maximizer_exists,
+        "boundary_dominated_regime": boundary_dominated_regime,
+        "practical_window_monotone": practical_window_monotone,
+        "practical_right_window_monotone": practical_right_window_monotone,
+        "practical_window_min_z": practical_window_min_z,
+        "practical_window_min_q": practical_window_min_q,
+        "constrain_nonnegative_z": bool(constrain_nonnegative_z),
+        "left_tail_overtake_trap": left_tail_overtake,
+        "left_tail_overtake_strata": overtaken_strata,
         "tail_turn_down": tail_turn_down,
         "raw_bon_asymptotic_acc": raw_bon_asymptotic_acc,
         "oracle_z_cal_asymptotic_acc": float(oracle_z_acc),
@@ -696,8 +851,9 @@ def verify_sample_zscore_extremal_convergence(
     prompt_scale: ArrayLike | None = None,
     n_eval_prompts: int = 3_000,
     seed: int = 42,
+    constrain_nonnegative_z: bool = False,
 ) -> dict:
-    """定量验证在线样本题内标准化 Z_{i,N} 对总体 Z_i^*(X) 的一致极值收敛与仿射不变上限损失（定理 7C(4)）。
+    """定量验证在线样本题内标准化 Z_{i,N} 对总体 Z_i^*(X) 的一致极值收敛与仿射不变上限损失（TMLR Theorem 3）。
 
     对任意题间仿射变换 S_i = b(X) + a(X) * S_tilde_i（a(X) > 0）与预算 N >= 2：
     1. 验证极值偏差上确界 Delta_N(X) := max_{1<=i<=N} |Z_{i,N} - Z_i^*(X)| 满足 O_p(sqrt((ln N) / N))；
@@ -705,7 +861,7 @@ def verify_sample_zscore_extremal_convergence(
        q_X(S_i) = q_X(b(X) + a(X) * [mu_tilde(X) + sigma_tilde(X) * Z_i^*(X)]) == q_tilde_X(mu_tilde(X) + sigma_tilde(X) * Z_i^*(X))，
        消除漏写 (b(X), a(X)) 导致的大偏移不一致；
     3. 验证在线样本 Z_{i,N} Oracle 选择准确率 lim_{N->inf} P_{Sample-Z-Cal}^{oracle}(N) 对任意 (b(X), a(X))
-       严格不变且收敛至理论渐近上限 (< 1 - pi_0)。
+       严格不变且收敛至理论渐近上限 (< 1 - pi_0)。若 constrain_nonnegative_z=True，则在非负半轴 Z >= 0 上做右尾约束校准，防止多内点左尾反超陷阱。
     """
     w = np.asarray(prompt_weights, dtype=np.float64).ravel()
     p_arr = np.asarray(prompt_p, dtype=np.float64).ravel()
@@ -727,6 +883,7 @@ def verify_sample_zscore_extremal_convergence(
         sigma1_base=sigma1_base,
         mu0_base=mu0_base,
         sigma0_base=sigma0_base,
+        constrain_nonnegative_z=constrain_nonnegative_z,
     )
     s1 = float(sigma1_base)
     s0 = float(sigma0_base)
@@ -742,7 +899,8 @@ def verify_sample_zscore_extremal_convergence(
     pos_idx = np.flatnonzero(p_arr > 0.0)
     neg_idx = np.flatnonzero(p_arr < 1.0)
 
-    def _eval_q_pool_zstar(z_mat: np.ndarray) -> np.ndarray:
+    def _eval_logit_q_pool_zstar(z_mat: np.ndarray) -> np.ndarray:
+        """返回 logit(q_{pool,Z*}(z)) 以避免极端尾部 expit 饱和导致误平局。"""
         flat = z_mat.ravel()
         lp = _logsumexp_components(
             [math.log(float(w[g] * p_arr[g])) + _norm_logpdf(flat, float(m1_g[g]), float(sd1_g[g])) for g in pos_idx]
@@ -753,7 +911,7 @@ def verify_sample_zscore_extremal_convergence(
                 for g in neg_idx
             ]
         )
-        return np.asarray(special.expit(lp - ln), dtype=np.float64).reshape(z_mat.shape)
+        return (lp - ln).reshape(z_mat.shape)
 
     rng = np.random.default_rng(seed)
     n_max = int(np.max(n_arr))
@@ -822,8 +980,25 @@ def verify_sample_zscore_extremal_convergence(
         scaled_sup_err[j] = mean_sup_err[j] / math.sqrt(math.log(float(n_i)) / float(n_i))
 
         idx_raw = np.argmax(s_sub, axis=1)
-        idx_pop = np.argmax(_eval_q_pool_zstar(z_pop), axis=1)
-        idx_smp = np.argmax(_eval_q_pool_zstar(z_smp), axis=1)
+        logit_pop = _eval_logit_q_pool_zstar(z_pop)
+        logit_smp = _eval_logit_q_pool_zstar(z_smp)
+        if constrain_nonnegative_z:
+            # 仅在非负半轴 Z >= 0 内极大化；若某行全为负值（仅总体 Z* 偶然全负时发生），回退至最大 Z 候选
+            has_pos_pop = np.any(z_pop >= 0.0, axis=1)
+            idx_pop = np.where(
+                has_pos_pop,
+                np.argmax(np.where(z_pop >= 0.0, logit_pop, -np.inf), axis=1),
+                np.argmax(z_pop, axis=1),
+            )
+            has_pos_smp = np.any(z_smp >= 0.0, axis=1)
+            idx_smp = np.where(
+                has_pos_smp,
+                np.argmax(np.where(z_smp >= 0.0, logit_smp, -np.inf), axis=1),
+                np.argmax(z_smp, axis=1),
+            )
+        else:
+            idx_pop = np.argmax(logit_pop, axis=1)
+            idx_smp = np.argmax(logit_smp, axis=1)
         raw_bon_acc[j] = float(np.mean(q_sub[rows, idx_raw]))
         pop_z_oracle_acc[j] = float(np.mean(q_sub[rows, idx_pop]))
         sample_z_oracle_acc[j] = float(np.mean(q_sub[rows, idx_smp]))
@@ -839,6 +1014,17 @@ def verify_sample_zscore_extremal_convergence(
         "theoretical_raw_ceiling": float(diag["raw_bon_asymptotic_acc"]),
         "theoretical_z_oracle_ceiling": float(diag["oracle_z_cal_asymptotic_acc"]),
         "theoretical_ceiling_loss": float(diag["asymptotic_ceiling_loss"]),
+        "pi_0_unsolvable": float(diag["pi_0_unsolvable"]),
+        "pi_1_trivial": float(diag["pi_1_trivial"]),
+        "z_tail_posterior_limit": float(diag["z_tail_posterior_limit"]),
+        "z_peak": float(diag["z_peak"]),
+        "q_z_peak": float(diag["q_z_peak"]),
+        "peak_exceeds_tail_limit": bool(diag["peak_exceeds_tail_limit"]),
+        "compact_maximizer_exists": bool(diag["compact_maximizer_exists"]),
+        "practical_window_monotone": bool(diag["practical_window_monotone"]),
+        "practical_right_window_monotone": bool(diag["practical_right_window_monotone"]),
+        "left_tail_overtake_trap": bool(diag["left_tail_overtake_trap"]),
+        "constrain_nonnegative_z": bool(constrain_nonnegative_z),
     }
 
 

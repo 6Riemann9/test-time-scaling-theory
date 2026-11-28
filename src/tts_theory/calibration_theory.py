@@ -374,6 +374,7 @@ def calibration_minimax_scaling(
     k_exp = 1.0 / (2.0 * beta_f + 1.0)
     r_exp = beta_f / (2.0 * beta_f + 1.0)
 
+    # 经验自适应系数 c_0：由局部曲率与方差尺度给出（理论速率 (M / ln M)^{1/(2*beta+1)} 中的常数）
     prefactor = max(1.5, (float(curvature_c) ** 2 / var_scale) ** k_exp)
     k_opt_float = prefactor * ((float(m_int) / log_m) ** k_exp)
     k_opt = int(max(3, min(m_int // 5, round(k_opt_float))))

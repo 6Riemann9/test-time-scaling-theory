@@ -53,3 +53,26 @@
 | **`P1-05`** | **P1** | `Table 3` 漂移矩阵原仅跑连续插值基线，需显式对齐 `Algorithm 1` 离散分割实现 | 扩增 `Alg1-SampleSplit`（50% 边+50% `KL-LCB`）同台对照并在 `Table 3` 括号标注（`0.7101`, `0.3500`） |
 | **`P1-06`** | **P1** | `Table 3` 仅测超界 OOD 尖峰，未显式暴露分布内高分污染下 `Support-Clipped` 的失效边界 | 增补 `[q_0.90, q_0.985]` 分布内 6% 污染对照、`Table 3` 下半区与 `Figure 3(c)` `R5: In-Sup Unseen` 柱组，诚实报告 `Support-Clipped` 退化为 `0.3629 / 0.3785` |
 | **`P1-07`** | **P1** | 独立重跑全量单元测试与静态质量审计脚本并同步仓库文档 | 升级 `scripts/audit_paper_artifacts.py`、同步 `EXPERIMENT_REPORT.md` / `README.md` 并完整复跑全部 **76 项** `pytest` 与审计检查 100% PASS |
+
+---
+
+## 5. TMLR 深度批判与诚实诊断升级台账（`paper/tmlr/`）
+
+在保持 NeurIPS 2026 归档（`paper/main.tex`、`paper/main.pdf` 与 `audit_paper_artifacts.py`）零退化前提下，针对 TMLR“理论诊断与负面/边界实证审计”定位完成以下 4 项全面重构：
+
+1. **理论推广至一般 $(\pi_0, \pi_1)$ 与实证边界核验**：将原要求 $\pi_1 = 0$ 的样本标准化尾反转定理推广至任意 $\pi_1 \ge 0$（给出精确两尾极限 $L_{\mathrm{tail}} = \frac{\pi_1}{\pi_0+\pi_1}$、$\pi_0=0,\pi_1>0$ 零损失相以及 $\pi_0>0$ 一般紧致峰值上限损失证明），并在五大真实基准上实测 $(\hat{\pi}_0, \hat{\pi}_1, \hat{L}_{\mathrm{tail}}, \max_k \hat{q}_Z, \hat{q}_Z(20))$，精准解释从 `RB2 (-0.92 pp)`、`S3 (-1.37 pp)`、`AceMath (-2.89/-2.84 pp)` 到 `OlympiadBench (-8.69 pp)` 的实测跌落梯度。
+2. **反事实 $\hat{\pi}_0 = 0$ 因果归因消融**：在 `AceMath RM-B` 相同 $50/20/30$ 划分与完整 $2{,}695$ 题测试集上验证过滤全错题（$\hat{\pi}_0^{\mathrm{tr}}=0$）及全边界原子仅留内点题（$\hat{\pi}_0^{\mathrm{tr}}=\hat{\pi}_1^{\mathrm{tr}}=0$）：剔除全错题将右尾 LCB 抬高 $\approx +12\,\mathrm{pp}$；在修复早期离散 `Algorithm 1` 非随机序列切片 Bug 后（改为真 i.i.d. 置换 50/50 划分与 `-1` 支撑截断），8 个随机划分种子下无论是连续分段线性校准器（`3a OOD`: $-0.33 \pm 0.40\,\mathrm{pp}$）还是真 i.i.d. 离散 `Algorithm 1`（`3a OOD`: $-0.28 \pm 0.46\,\mathrm{pp}$），在移除 $\hat{\pi}_0^{\mathrm{tr}}$ 后均保持稳健防御能力——原因在于极低先验难内点题（$\bar{p}_{16}=0.659 \to \bar{p}_{20}=0.446$）在方差压缩分母作用下继续聚集最右端，使两种校准器仍维持峰后负斜率下压。
+3. **诚实叙事重定位与割裂消解**：将 $N=2$ 样本 $Z$ 秩天花板降格为 `Proposition`；将 `Hybrid-Fixed` 诚实定性为“零干净净增益、仅作防退化保护”的最小留出门控基线；在 §3 建立跨题池化错配 + 有限 $(M,N)$ 估计误差分解公式，并以“安全税（safety tax）”统一解释 §7.4 `Safe-Fisher` 与 `Min-Ensemble` 在低 $N$/无坍塌基准上的保守让利。
+4. **官方 TMLR 格式双盲编译与零泄密扫描**：部署官方 `tmlr.sty` 与 `tmlr.bst`，生成双盲投稿版 `paper/tmlr/main_tmlr.pdf` 与预印本版 `paper/tmlr/main_tmlr_preprint.pdf`，并通过 `scripts/audit_tmlr_paper.py` 强制验证双盲版 0 身份线索泄漏与 0 死标签/未定义引用。
+
+---
+
+## 6. 多轮 Swarm 对抗审稿与迭代收敛台账（Round 1–3）
+
+为彻底排查理论盲区、代码实现瑕疵与 TMLR 双盲投稿风险，启动由理论数学审稿人（`math-critic`）、实证账实审稿人（`emp-critic`）、TMLR AE 审稿人（`tmlr-ae`）与修复验证工程师（`author-fixer`）组成的 4 角色对抗 Swarm，完成 **3 轮“对抗挑刺 $\to$ 协调者仲裁 $\to$ 实质修补与重验 $\to$ 验尸复审”**闭环并最终收敛签字：
+
+| 轮次 | 暴露并解决的核心 `S0` / `S1` 关键缺陷 | 实施修补与复核结果 |
+| :--- | :--- | :--- |
+| **Round 1** | 1. **`Theorem 3(1)(a)` 左尾反超陷阱（`[S0]`）**：无约束双尾极大化在多内点高先验层满足 $(1-v_{\max})(\|m_0(p_C)\|-m_1(p_C)) > 2\|m_0(p^*)\|$ 时会将选择推向 $Z^* \to -\infty$（如 `Case 4` 渐近跌至 `0.55`）。<br>2. **`_fit_alg1_discrete` 非 i.i.d. 序列切分 Bug（`[S0]`）**：`train_idx` 按 `AceMath` 7 个子集排序拼接直接取 `[:m_half]` 切分，伪造了 `-7.60 pp` 假暴跌。<br>3. **`Theorem 4(1)` 归一化错误 & `eq:regret-decomp` 基准错配（`[S0]`）**：原 `App. D` 归一化写为 $\sum x_k=1$（应为 $\sum(1+\lambda_k)x_k=1$）；遗憾分解遗漏 $\Theta(N^{-\beta})$ 在线算力项桥接。<br>4. **图内编号错位、双盲工程痕迹与文献缺口（`[S0]`）**：`fig1` 残留 NeurIPS 定理号；双盲稿残留 `Repo Theorems`/`verify_v9`/`v10` 等可追踪文件名；缺 14 篇核心文献及 TMLR 专属诊断图。 | 1. 将 `Theorem 3(1)(a)` 收紧为右半轴 $Z_{i,N} \ge 0$ 约束并新增 `Case 4` 左尾陷阱分析与 `Reverse Fatou` 证明；<br>2. 将 `verify_tmlr_diagnostics.py` 修复为真 i.i.d. 随机置乱 50/50 划分与 `-1` 截断，并补跑 8 随机划分种子稳健性；<br>3. 修正 `App. D` 完整证明与 §6 全符号定义（`\theta_{c,I_0}` 消碰撞）；<br>4. 新建 `paper/tmlr/figures/`（重绘 `fig1..fig4` + 新增 `fig5` 3 联诊断图）与 `paper/tmlr/references_tmlr.bib`（41 篇 100% 闭环），双盲与 Preprint 隔离并通过审计。 |
+| **Round 2** | 1. **`P^{-\top} V_{\min}` 线性代数子空间误写（`[S0]`）**：Round 1 修改时误将 $P V_{\min}$ 写成 $P^{-\top} V_{\min}$（非正交 $P$ 反例残差 `1.5051` vs `4.14e-16`）。<br>2. **`Table 5` 行 `2a` `Val \hat{m}` 错位 & `Table 4` 元组陈旧（`[S0]`/`[S1]`）**：`2a` 误印 `Pooled-LCB`（实为 `Within-Z`），且 `1/3a/3b` 干净验证集 `[Alg. 1]` 选中 `Alg1-Pooled` 未标注；`Size-Match` 先验元组陈旧。<br>3. **`Case 2` 单调区间误报 & `heterogeneity_theory.py` 早退（`[S1]`）**：`Case 2` 在 `z \approx -3.68` 存在谷底，仅在 `[-3.6, 18.8]` 单调上升；代码缺 `constrain_nonnegative_z` 开关。 | 1. 修正 `main_tmlr.tex` 与 `PROOF.md` 为 $P V_{\min}$ 与归一化 $\mathbf{u}_{\min}^\top \Sigma_1 \mathbf{u}_{\min}=1$；<br>2. 对齐 `Table 5` 全部 `Val \hat{m}`（`Within-Z` / `Raw-BoN [Pooled]`）及 `Table 4` `(0.1468, 0.0216)`；<br>3. 为 `diagnose_zscore_induced_collapse` 新增 `constrain_nonnegative_z` 与严格差分单调校验，精准区分 `Case 2` 渐近与有限 $N$ 零损失，同步完善图注自包含、`\hat{\kappa}_Z` 定义与全 23 页零警告排版。 |
+| **Round 3** | **全面验尸终审**：三方只读复查最新版 `main_tmlr.tex`、双版 23 页 PDF、`heterogeneity_theory.py`、`tmlr_diagnostics.json` 与 `PROOF.md`。 | **全部阻断项清零签字**：`math-critic` (`S0=0, S1=0`)、`emp-critic` (`S0=0, S1=0`)、`tmlr-ae` (`S0=0, S1=0, S2=0`) 一致签发 TMLR `Accept / Accept with Minor Revisions` 收敛放行（Coordinator 随手补齐 `App. B` 构造长度区间 `L_0 \in (2\eta_0, 1/f_{\min})` 与 $\pi_0 \le 10^{-15}$ 边界守卫后完成全量重编与回归）。 |

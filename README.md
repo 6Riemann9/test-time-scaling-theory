@@ -43,12 +43,18 @@ test-time-scaling-theory/
 │   ├── references.bib                         # 逐篇外部核验的 27 篇 BibTeX 参考文献库
 │   ├── neurips_2026.sty                       # NeurIPS 2026 官方排版样式（支持 [preprint] 与双盲匿名模式）
 │   ├── Makefile                               # 论文一键编译脚本
-│   ├── REVIEW_AUDIT.md                        # 多工具联合质量审计与修正对照备忘录（含第五轮 9/9 整改台账）
-│   └── figures/                               # 论文主图（fig1–fig4 矢量 .pdf 与 300 DPI .png）
+│   ├── REVIEW_AUDIT.md                        # 多工具联合质量审计与修正对照备忘录（含 NeurIPS 与 TMLR 台账）
+│   ├── figures/                               # 论文主图（fig1–fig4 矢量 .pdf 与 300 DPI .png）
+│   └── tmlr/                                  # TMLR 诚实诊断与一般 (pi_0, pi_1) 扩充投稿版（双盲 + Preprint 均 23 页）
+│       ├── main_tmlr.tex / main_tmlr_preprint.tex
+│       ├── main_tmlr.pdf / main_tmlr_preprint.pdf
+│       ├── references_tmlr.bib                # 41 篇独立扩展 BibTeX 库（100% 正文引用闭环）
+│       ├── figures/                           # TMLR 专属 5 张矢量图（fig1–fig5 .pdf 与 300 DPI .png）
+│       └── tmlr.sty / tmlr.bst / Makefile
 ├── src/tts_theory/
 │   ├── __init__.py                            # 统一公开 API 导出 (v1.0.0)
 │   ├── calibration_theory.py                  # 主定理 6：KL-LCB、一致正则类、平衡点 N_balance 与紧 Gamma 间距界
-│   ├── heterogeneity_theory.py                # 主定理 7：辛普森遮蔽、非退化纯秩界与仿射不变样本 Z_{i,N} 极值收敛
+│   ├── heterogeneity_theory.py                # 主定理 7：辛普森遮蔽、非退化纯秩界与一般 (pi_0, pi_1) 样本 Z_{i,N}
 │   ├── ensemble_theory.py                     # 补充定理 5：Safe-Fisher/QDA/含零乘子 QP/Copula 统一模块
 │   ├── real_eval.py                           # 三种分桶协议（带防呆校验）、单次划分 (50/20/30) 配对 t 检验与嵌套 CV 引擎
 │   ├── theorems.py                            # 预备定理 1–4 分布规格、散度边界与异质错类权重接口
@@ -56,12 +62,13 @@ test-time-scaling-theory/
 │   ├── simulator.py                           # 流式分块向量化蒙特卡洛仿真器
 │   └── algorithms.py                          # StandardBoN, OptimalNStarBoN, EmpiricalScoreCalibrator,
 │                                              # CalibratedWeightedBoN, TwoStageVerifiedMajority
-├── tests/                                     # 全套 12 个离线测试模块（共 76 项测试）
+├── tests/                                     # 全套 13 个离线测试模块（共 80 项测试）
 │   ├── test_theorems.py / test_algorithms.py / test_extensions.py
 │   ├── test_real_eval.py / test_stage2_real_eval.py
 │   ├── test_v4_theory.py / test_v5_rigor.py / test_v6_theory.py
 │   ├── test_v7_counterexamples.py / test_v8_rigor.py / test_v9_consolidation.py
-│   └── test_v10_release.py                    # 四/五审收官：正交边界、均匀破平局、Bonferroni、分布内漂移与同 K 消融（9 项）
+│   ├── test_v10_release.py                    # 四/五审收官：正交边界、均匀破平局、Bonferroni、分布内漂移与同 K 消融（9 项）
+│   └── test_tmlr_diagnostics.py               # TMLR 审计：一般 pi_1>=0 相变、pi_0=0 反事实逻辑与 JSON 校验（4 项）
 ├── scripts/
 │   ├── verify_theorems.py / run_experiments.py / plot_figures.py
 │   ├── run_v2_extensions.py / plot_v2_figures.py
@@ -70,11 +77,14 @@ test-time-scaling-theory/
 │   ├── verify_v4_theory.py / verify_v6_theory.py / verify_v7_rigor.py / verify_v8_rigor.py
 │   ├── verify_v9_consolidation.py             # 三种分桶协议、单次划分 50/20/30 主表与受控尾污染压力测试
 │   ├── verify_v10_release.py                  # 同 K 公平消融、四相分布漂移矩阵与自然坍塌子集审计 -> v10_release_verification.json
-│   ├── plot_paper_figures.py                  # 生成论文主图 fig1–fig4（矢量 .pdf + 300 DPI .png）至 paper/figures/
-│   └── audit_paper_artifacts.py               # 论文静态 LaTeX、标签引用、数值防回归与跨文档一致性自动审计脚本
+│   ├── verify_tmlr_diagnostics.py             # TMLR：一般 pi_1>=0、左尾反超陷阱、五设置诊断与 8 种子反事实消融 -> tmlr_diagnostics.json
+│   ├── plot_paper_figures.py                  # 生成 NeurIPS 归档主图 fig1–fig4（矢量 .pdf + 300 DPI .png）至 paper/figures/
+│   ├── plot_tmlr_figures.py                   # 生成 TMLR 专属 5 张主图 fig1–fig5 至 paper/tmlr/figures/
+│   ├── audit_paper_artifacts.py               # NeurIPS 论文静态 LaTeX、标签引用、数值防回归与跨文档一致性自动审计
+│   └── audit_tmlr_paper.py                    # TMLR 论文双盲零泄密、独立 BibTeX 与 5 张图闭环审计
 └── results/
-    ├── EXPERIMENT_REPORT.md                   # 全套实验与风险控制实证报告（含 §13 V9 与 §14 V10 收官核验）
-    ├── v9_consolidation_verification.json / v10_release_verification.json
+    ├── EXPERIMENT_REPORT.md                   # 全套实验与风险控制实证报告（含 §13 V9、§14.1-3 V10 与 §14.4 TMLR 诊断）
+    ├── v9_consolidation_verification.json / v10_release_verification.json / tmlr_diagnostics.json
     ├── theorem_verification.json / experiment_results.json / v2_extension_results.json
     ├── real_llm_results.json / v4_theory_verification.json / v6_theory_verification.json
     ├── v7_rigor_verification.json / v8_rigor_verification.json
@@ -94,10 +104,10 @@ git clone https://github.com/6Riemann9/test-time-scaling-theory.git
 cd test-time-scaling-theory
 python -m pip install --no-deps --no-build-isolation -e .
 
-# 2. 运行全量单元测试（共 76 项离线测试）
+# 2. 运行全量单元测试（共 80 项离线测试）
 python -m pytest -v
 
-# 3. 运行理论校验与 V9/V10 协议对齐、公平消融及分布漂移验证脚本
+# 3. 运行理论校验与 V9/V10/TMLR 协议对齐、公平消融、边界比例及反事实漂移验证脚本
 python scripts/verify_theorems.py
 python scripts/verify_v4_theory.py
 python scripts/verify_v6_theory.py
@@ -105,13 +115,15 @@ python scripts/verify_v7_rigor.py
 python scripts/verify_v8_rigor.py
 python scripts/verify_v9_consolidation.py
 python scripts/verify_v10_release.py
+python scripts/verify_tmlr_diagnostics.py
 
-# 4. 运行真实大模型/RM 全量实验、绘图与论文质量静态审计
+# 4. 运行真实大模型/RM 全量实验、绘图与双版本论文质量静态审计
 python scripts/run_real_llm_experiments.py
 python scripts/run_stage2_experiments.py --stages all
 python scripts/plot_stage2_figures.py
 python scripts/plot_paper_figures.py
 python scripts/audit_paper_artifacts.py
+python scripts/audit_tmlr_paper.py
 ```
 
 ---
